@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tokenizer Playground</title>
+<style>
+  :root {
+    --bg: #f7f7f5; --card: #ffffff; --ink: #1d1d1b; --muted: #6b6b66; --line: #e3e2dc;
+    --accent: #3b5bdb; --accent-soft: #e7ecff; --warn: #c2410c; --good: #2f855a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #151514; --card: #1f1f1d; --ink: #ececea; --muted: #a3a39c; --line: #34342f;
+      --accent: #8da2fb; --accent-soft: #262b45; --warn: #fb923c; --good: #68d391;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #151514; --card: #1f1f1d; --ink: #ececea; --muted: #a3a39c; --line: #34342f;
+    --accent: #8da2fb; --accent-soft: #262b45; --warn: #fb923c; --good: #68d391;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1100px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 1.6rem; margin: 0 0 4px; }
+  h2 { font-size: 1.1rem; margin: 0 0 10px; }
+  p.lead { color: var(--muted); margin: 0 0 20px; max-width: 75ch; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 820px) { .grid { grid-template-columns: 1fr; } }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+  textarea { width: 100%; min-height: 110px; font: 13px/1.45 ui-monospace, Menlo, Consolas, monospace; padding: 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); resize: vertical; }
+  button { font: inherit; padding: 6px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--ink); cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button:hover { border-color: var(--accent); }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
+  input[type=range] { flex: 1; min-width: 160px; accent-color: var(--accent); }
+  .stat { display: inline-block; padding: 4px 10px; border-radius: 999px; background: var(--accent-soft); margin: 2px 4px 2px 0; font-size: 13px; }
+  .stat b { font-variant-numeric: tabular-nums; }
+  .tokens { display: flex; flex-wrap: wrap; gap: 3px; font: 14px ui-monospace, Menlo, Consolas, monospace; margin-top: 8px; }
+  .tok { padding: 2px 4px; border-radius: 4px; white-space: pre; border: 1px solid rgba(0,0,0,.08); color: #1d1d1b; }
+  .tok .sp { opacity: .45; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--line); }
+  td.mono, .mono { font-family: ui-monospace, Menlo, Consolas, monospace; white-space: pre; }
+  tr.current { background: var(--accent-soft); }
+  .merges { max-height: 330px; overflow: auto; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .bytes { display: flex; flex-wrap: wrap; gap: 4px; font: 13px ui-monospace, Menlo, Consolas, monospace; }
+  .byte { border: 1px solid var(--line); border-radius: 6px; padding: 2px 6px; text-align: center; }
+  .byte small { display: block; color: var(--muted); font-size: 11px; }
+  .b2 { background: rgba(234, 179, 8, .18); } .b3 { background: rgba(249, 115, 22, .2); } .b4 { background: rgba(220, 38, 38, .2); }
+  .callout { border-left: 3px solid var(--warn); padding: 6px 12px; background: var(--bg); border-radius: 0 8px 8px 0; margin-top: 10px; font-size: 14px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Tokenizer playground</h1>
+  <p class="lead">LLMs read <b>tokens</b>, not characters. This page trains a real <b>byte-pair encoding (BPE)</b> tokenizer on the corpus you type, then shows how new text gets split. Drag the merges slider: every merge glues the most frequent adjacent pair into a new vocabulary entry. (Real tokenizers start from UTF-8 bytes and do ~100k–200k merges. Here we start from characters so you can read the pieces.)</p>
+
+  <div class="grid">
+    <section class="card">
+      <h2>1 · Training corpus</h2>
+      <textarea id="corpus"></textarea>
+      <div class="row">
+        <label for="merges">Merges: <b id="mergeCount">0</b></label>
+        <input type="range" id="merges" min="0" max="200" value="0">
+      </div>
+      <div class="row">
+        <button id="step" class="primary">Step +1 merge</button>
+        <button id="play">▶ Play</button>
+        <button id="reset">Reset</button>
+      </div>
+      <div class="muted" id="vocabInfo"></div>
+    </section>
+
+    <section class="card">
+      <h2>2 · Learned merges (in order)</h2>
+      <div class="merges"><table><thead><tr><th>#</th><th>pair</th><th>→ new token</th><th>count</th></tr></thead><tbody id="mergeTable"></tbody></table></div>
+    </section>
+  </div>
+
+  <section class="card">
+    <h2>3 · Tokenize new text with the current vocabulary</h2>
+    <div class="row">
+      <span class="muted">Presets:</span>
+      <button data-preset="english">English</button>
+      <button data-preset="code">Code</button>
+      <button data-preset="json">JSON with UUID</button>
+      <button data-preset="urdu">Urdu</button>
+      <button data-preset="unseen">Unseen words</button>
+    </div>
+    <textarea id="input" style="min-height:70px"></textarea>
+    <div id="stats" style="margin-top:8px"></div>
+    <div class="tokens" id="tokens"></div>
+    <div class="callout" id="insight"></div>
+  </section>
+
+  <section class="card">
+    <h2>4 · Why non-English text costs more: UTF-8 bytes</h2>
+    <p class="muted">Byte-level tokenizers start from bytes. ASCII letters are 1 byte, Arabic-script letters 2, CJK 3, emoji 4. If the training data had little of a script, few merges exist for it, so it stays split into many byte-sized tokens.</p>
+    <div class="bytes" id="bytes"></div>
+    <div id="byteStats" style="margin-top:8px"></div>
+  </section>
+
+  <section class="card">
+    <h2>5 · Real tokenizers, measured in Lab 01</h2>
+    <table>
+      <thead><tr><th>Sample</th><th>chars</th><th>GPT-2 (50k vocab)</th><th>o200k_base (200k vocab)</th><th>chars/token (o200k)</th></tr></thead>
+      <tbody>
+        <tr><td>English sentence</td><td>80</td><td>17</td><td>17</td><td>4.71</td></tr>
+        <tr><td>Same meaning in Urdu</td><td>76</td><td>106</td><td>30</td><td>2.53</td></tr>
+        <tr><td>TypeScript one-liner</td><td>106</td><td>30</td><td>26</td><td>4.08</td></tr>
+        <tr><td>JSON with a UUID</td><td>90</td><td>52</td><td>52</td><td>1.73</td></tr>
+      </tbody>
+    </table>
+    <p class="muted">Run <span class="mono">npx tsx phase-01-how-llms-work/labs/01-tokens/check.ts solution</span> to reproduce. A bigger vocabulary helps Urdu a lot (106 → 30), and does nothing for random IDs.</p>
+  </section>
+</main>
+
+<script>
+const CORPUS = `the server returned an error. the servers are restarting.
+deploy the service to production. the deployment finished.
+we deploy every friday. the developer deployed the fix.
+the user logged in. the users logged out. log the error.
+retry the request. the request failed. requests are queued.
+tokenization splits text into tokens. tokens are not words.`;
+
+const PRESETS = {
+  english: 'the developer deployed the service and the users logged in.',
+  code: 'export const retry = async (req) => { await deploy(req); };',
+  json: '{"userId":"a3f1c9e2-7b4d-4e8a-9c1f-2d3e4f5a6b7c","role":"admin"}',
+  urdu: 'سرور نے ایک غلطی واپس کی۔',
+  unseen: 'quantum cryptography blockchain kubernetes',
+};
+
+const $ = (id) => document.getElementById(id);
+const corpusEl = $('corpus'), inputEl = $('input'), slider = $('merges');
+corpusEl.value = CORPUS;
+inputEl.value = PRESETS.english;
+
+// Pre-tokenize: split into "words" that keep their leading space (as GPT-style tokenizers do).
+const pretokenize = (text) => text.match(/ ?[^\s]+|\s+/g) || [];
+
+function train(corpus, maxMerges) {
+  const freq = new Map();
+  for (const w of pretokenize(corpus)) freq.set(w, (freq.get(w) || 0) + 1);
+  let words = [...freq].map(([w, n]) => ({ syms: [...w], n }));
+  const base = new Set(words.flatMap((w) => w.syms));
+  const merges = [];
+  for (let m = 0; m < maxMerges; m++) {
+    const pairs = new Map();
+    for (const w of words) for (let i = 0; i < w.syms.length - 1; i++) {
+      const key = w.syms[i] + '\u0000' + w.syms[i + 1];
+      pairs.set(key, (pairs.get(key) || 0) + w.n);
+    }
+    let best = null, bestN = 1; // a pair must occur at least twice to be worth a merge
+    for (const [k, n] of pairs) if (n > bestN || (n === bestN && best !== null && k < best)) { best = k; bestN = n; }
+    if (!best) break;
+    const [a, b] = best.split('\u0000');
+    merges.push({ a, b, n: bestN });
+    words = words.map((w) => ({ syms: applyMerge(w.syms, a, b), n: w.n }));
+  }
+  return { merges, base };
+}
+
+function applyMerge(syms, a, b) {
+  const out = [];
+  for (let i = 0; i < syms.length; i++) {
+    if (i < syms.length - 1 && syms[i] === a && syms[i + 1] === b) { out.push(a + b); i++; }
+    else out.push(syms[i]);
+  }
+  return out;
+}
+
+function encode(text, merges, upTo) {
+  const tokens = [];
+  for (const w of pretokenize(text)) {
+    let syms = [...w];
+    for (let m = 0; m < upTo; m++) syms = applyMerge(syms, merges[m].a, merges[m].b);
+    tokens.push(...syms);
+  }
+  return tokens;
+}
+
+let model = train(CORPUS, 200);
+const show = (s) => s.replace(/ /g, '·').replace(/\n/g, '↵');
+const colorFor = (s) => {
+  let h = 0; for (const c of s) h = (h * 31 + c.codePointAt(0)) >>> 0;
+  return `hsl(${h % 360} 75% 82%)`;
+};
+
+function render() {
+  const upTo = +slider.value;
+  $('mergeCount').textContent = upTo;
+  slider.max = model.merges.length;
+  $('vocabInfo').textContent = `Vocabulary = ${model.base.size} base characters + ${upTo} merges = ${model.base.size + upTo} tokens. (${model.merges.length} merges possible on this corpus.)`;
+
+  $('mergeTable').innerHTML = model.merges.map((m, i) =>
+    `<tr class="${i === upTo - 1 ? 'current' : ''}" style="${i >= upTo ? 'opacity:.35' : ''}"><td>${i + 1}</td><td class="mono">${esc(show(m.a))} + ${esc(show(m.b))}</td><td class="mono">${esc(show(m.a + m.b))}</td><td>${m.n}</td></tr>`).join('');
+  const cur = $('mergeTable').querySelector('.current');
+  if (cur) cur.scrollIntoView({ block: 'nearest' });
+
+  const text = inputEl.value;
+  const toks = encode(text, model.merges, upTo);
+  const chars = [...text].length;
+  $('tokens').innerHTML = toks.map((t) => `<span class="tok" style="background:${colorFor(t)}" title="${esc(JSON.stringify(t))}">${esc(t).replace(/ /g, '<span class="sp">·</span>')}</span>`).join('');
+  $('stats').innerHTML = `<span class="stat">characters <b>${chars}</b></span><span class="stat">tokens <b>${toks.length}</b></span><span class="stat">chars / token <b>${(chars / Math.max(1, toks.length)).toFixed(2)}</b></span>`;
+
+  let insight;
+  if (/[؀-ۿ]/.test(text)) insight = 'The corpus has no Urdu, so no merges apply. Every letter stays a separate token, whatever the merge count. Real tokenizers trained mostly on English behave the same way, at a smaller scale.';
+  else if (/[0-9a-f]{8}-/.test(text)) insight = 'Random IDs never compress: their character pairs are not frequent in any corpus. UUIDs, hashes and base64 cost ~1.5–2 chars/token in production tokenizers.';
+  else if (upTo === 0) insight = 'With 0 merges every character is its own token, so the sequence is as long as possible. Press <b>Step</b> or <b>Play</b>.';
+  else insight = `Words that appear often in the corpus (like <span class="mono">·the</span>, <span class="mono">·deploy</span>) become single tokens. Unseen words get split into known fragments, so there is never an "unknown word".`;
+  $('insight').innerHTML = insight;
+
+  const enc = new TextEncoder();
+  const cps = [...text].slice(0, 120);
+  $('bytes').innerHTML = cps.map((c) => {
+    const n = enc.encode(c).length;
+    return `<span class="byte ${n > 1 ? 'b' + n : ''}">${esc(c === ' ' ? '·' : c === '\n' ? '↵' : c)}<small>${n}B</small></span>`;
+  }).join('');
+  const bytes = enc.encode(text).length;
+  $('byteStats').innerHTML = `<span class="stat">characters <b>${chars}</b></span><span class="stat">UTF-8 bytes <b>${bytes}</b></span><span class="stat">bytes / char <b>${(bytes / Math.max(1, chars)).toFixed(2)}</b></span>`;
+}
+
+function esc(s) { return s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+
+let timer = null;
+function stopPlay() { clearInterval(timer); timer = null; $('play').textContent = '▶ Play'; }
+$('play').onclick = () => {
+  if (timer) return stopPlay();
+  $('play').textContent = '⏸ Pause';
+  timer = setInterval(() => {
+    if (+slider.value >= model.merges.length) return stopPlay();
+    slider.value = +slider.value + 1; render();
+  }, 250);
+};
+$('step').onclick = () => { slider.value = Math.min(model.merges.length, +slider.value + 1); render(); };
+$('reset').onclick = () => { stopPlay(); slider.value = 0; render(); };
+slider.oninput = render;
+inputEl.oninput = render;
+let debounce;
+corpusEl.oninput = () => { clearTimeout(debounce); debounce = setTimeout(() => { model = train(corpusEl.value, 200); slider.value = Math.min(+slider.value, model.merges.length); render(); }, 250); };
+document.querySelectorAll('[data-preset]').forEach((b) => b.onclick = () => { inputEl.value = PRESETS[b.dataset.preset]; render(); });
+slider.value = 0;
+render();
+</script>
+</body>
+</html>

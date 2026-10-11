@@ -1,0 +1,90 @@
+[
+  {
+    "role": "system",
+    "content": "You are the support assistant for Acme Cloud. Answer briefly and cite the runbook section."
+  },
+  {
+    "role": "user",
+    "content": "My name is Sara and I run the payments team. Our deploy failed, what now?"
+  },
+  {
+    "role": "assistant",
+    "content": "Sorry to hear that. First check the CI logs for the failing step, then decide whether to roll back or fix forward. If customers are affected, roll back first and investigate after."
+  },
+  {
+    "role": "user",
+    "content": "How do I roll back?"
+  },
+  {
+    "role": "assistant",
+    "content": "Run deploy rollback --to <version> from the ops CLI. Pick the last version that passed health checks. The rollback takes about two minutes."
+  },
+  {
+    "role": "user",
+    "content": "Will the rollback affect the database?"
+  },
+  {
+    "role": "assistant",
+    "content": "No. Migrations must be backwards compatible with the previous release, so rolling back the app does not require rolling back the schema."
+  },
+  {
+    "role": "user",
+    "content": "How long are logs kept?"
+  },
+  {
+    "role": "assistant",
+    "content": "14 days in hot storage and one year in cold storage."
+  },
+  {
+    "role": "user",
+    "content": "Can I toggle a feature without deploying?"
+  },
+  {
+    "role": "assistant",
+    "content": "Yes, feature flags can be toggled in the admin dashboard without a redeploy."
+  },
+  {
+    "role": "user",
+    "content": "What is the API rate limit?"
+  },
+  {
+    "role": "assistant",
+    "content": "600 requests per minute per API key. Above that you get HTTP 429 responses."
+  },
+  {
+    "role": "user",
+    "content": "Who gets paged when errors spike?"
+  },
+  {
+    "role": "assistant",
+    "content": "The on-call engineer, through the incident channel, when the error rate exceeds 2%."
+  },
+  {
+    "role": "user",
+    "content": "What does /healthz need to return?"
+  },
+  {
+    "role": "assistant",
+    "content": "HTTP 200 when all dependencies are reachable."
+  },
+  {
+    "role": "user",
+    "content": "Where do secrets live?"
+  },
+  {
+    "role": "assistant",
+    "content": "In the vault. They are injected as environment variables at deploy time."
+  },
+  {
+    "role": "user",
+    "content": "When is staging reset?"
+  },
+  {
+    "role": "assistant",
+    "content": "Every Monday at 06:00 UTC."
+  },
+  {
+    "role": "user",
+    "content": "Remind me: what is my name and which team do I run?"
+  }
+]

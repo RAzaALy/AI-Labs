@@ -1,0 +1,31 @@
+{
+  "name": "ai-learning-path",
+  "private": true,
+  "type": "module",
+  "description": "TypeScript-first AI engineering curriculum: LLM fundamentals to production",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p .",
+    "verify": "tsx scripts/verify.ts",
+    "verify:p1": "tsx scripts/verify.ts phase-01"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  },
+  "dependencies": {
+    "@ai-sdk/anthropic": "^4.0.78",
+    "@ai-sdk/google": "^4.0.93",
+    "@ai-sdk/groq": "^4.0.59",
+    "@ai-sdk/openai": "^4.0.91",
+    "@huggingface/transformers": "^4.3.1",
+    "@openrouter/ai-sdk-provider": "^3.1.0",
+    "ai": "^7.0.137",
+    "dotenv": "^18.0.7",
+    "js-tiktoken": "^1.0.21",
+    "zod": "^4.6.5"
+  }
+}

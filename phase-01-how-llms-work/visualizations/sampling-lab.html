@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sampling Lab</title>
+<style>
+  :root { --bg: #f7f7f5; --card: #ffffff; --ink: #1d1d1b; --muted: #6b6b66; --line: #e3e2dc; --accent: #3b5bdb; --accent-soft: #e7ecff; --warn: #c2410c; --ghost: #d6d5ce; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #151514; --card: #1f1f1d; --ink: #ececea; --muted: #a3a39c; --line: #34342f; --accent: #8da2fb; --accent-soft: #262b45; --warn: #fb923c; --ghost: #3b3b36; } }
+  :root[data-theme="dark"] { --bg: #151514; --card: #1f1f1d; --ink: #ececea; --muted: #a3a39c; --line: #34342f; --accent: #8da2fb; --accent-soft: #262b45; --warn: #fb923c; --ghost: #3b3b36; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1100px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 1.6rem; margin: 0 0 4px; } h2 { font-size: 1.05rem; margin: 0 0 8px; }
+  p.lead { color: var(--muted); margin: 0 0 16px; max-width: 80ch; }
+  .layout { display: grid; grid-template-columns: 320px minmax(0, 1fr); gap: 16px; }
+  @media (max-width: 860px) { .layout { grid-template-columns: 1fr; } }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+  label.ctl { display: block; margin: 12px 0 2px; font-size: 14px; }
+  label.ctl b { float: right; font-variant-numeric: tabular-nums; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  select, button { font: inherit; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--ink); max-width: 100%; }
+  button { cursor: pointer; } button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
+  .prompt { font: 18px ui-monospace, Menlo, Consolas, monospace; padding: 10px 12px; background: var(--bg); border-radius: 8px; word-break: break-word; }
+  .prompt .next { background: var(--accent); color: #fff; border-radius: 4px; padding: 0 3px; white-space: pre; }
+  .bars { font: 13px ui-monospace, Menlo, Consolas, monospace; }
+  .b { display: grid; grid-template-columns: 130px 1fr 64px; gap: 8px; align-items: center; height: 24px; }
+  .b .tk { white-space: pre; overflow: hidden; text-overflow: ellipsis; text-align: right; }
+  .b .track { position: relative; height: 16px; }
+  .b .ghost, .b .fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; }
+  .b .ghost { border: 1px dashed var(--muted); opacity: .6; }
+  .b .fill { background: var(--accent); }
+  .b.cut .tk { text-decoration: line-through; color: var(--muted); }
+  .b.cut .fill { background: var(--ghost); }
+  .b .pct { text-align: right; font-variant-numeric: tabular-nums; }
+  .b.other .tk { font-style: italic; color: var(--muted); }
+  .stat { display: inline-block; padding: 4px 10px; border-radius: 999px; background: var(--accent-soft); margin: 2px 4px 2px 0; font-size: 13px; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .callout { border-left: 3px solid var(--warn); padding: 6px 12px; background: var(--bg); border-radius: 0 8px 8px 0; margin-top: 10px; font-size: 14px; }
+  .hist .b .fill { background: #10b981; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Sampling lab: temperature, top-k, top-p</h1>
+  <p class="lead">These are the <b>real next-token logits</b> from SmolLM2-135M for each prompt (top 40 tokens, plus the other ~49k tokens summarised as "everything else"). Move the sliders to watch the distribution reshape, then sample from it. The dashed outline is the untouched distribution at T=1.</p>
+
+  <div class="layout">
+    <section class="card">
+      <h2>Controls</h2>
+      <label class="ctl" for="prompt">Prompt</label>
+      <select id="prompt" style="width:100%"></select>
+
+      <label class="ctl" for="temp">Temperature <b id="tempV"></b></label>
+      <input type="range" id="temp" min="0" max="2" step="0.05" value="1">
+
+      <label class="ctl" for="topk">top-k <b id="topkV"></b></label>
+      <input type="range" id="topk" min="0" max="40" step="1" value="0">
+
+      <label class="ctl" for="topp">top-p (nucleus) <b id="toppV"></b></label>
+      <input type="range" id="topp" min="0.05" max="1" step="0.05" value="1">
+
+      <div class="row" style="margin-top:14px">
+        <button id="preset-extract">Extraction preset</button>
+        <button id="preset-chat">Chat preset</button>
+        <button id="preset-wild">Chaos preset</button>
+      </div>
+      <div id="metrics" style="margin-top:10px"></div>
+    </section>
+
+    <div>
+      <section class="card">
+        <div class="prompt" id="promptView"></div>
+        <div class="row">
+          <button class="primary" id="s1">Sample 1 token</button>
+          <button id="s100">Sample ×200</button>
+          <button id="clear">Clear histogram</button>
+        </div>
+        <div class="callout" id="note"></div>
+      </section>
+      <section class="card">
+        <h2>Next-token distribution after T → top-k → top-p</h2>
+        <div class="bars" id="bars"></div>
+      </section>
+      <section class="card hist">
+        <h2>What you actually sampled <span class="muted" id="histN"></span></h2>
+        <div class="bars" id="hist"><span class="muted">Press "Sample ×200".</span></div>
+      </section>
+    </div>
+  </div>
+</main>
+
+<script type="application/json" id="viz-data">{"model":"HuggingFaceTB/SmolLM2-135M-Instruct","prompts":[{"prompt":"The capital of France is","tokens":["The"," capital"," of"," France"," is"],"top":[{"t":" Paris","z":15.965},{"t":" the","z":15.397},{"t":" located","z":14.235},{"t":" called","z":12.679},{"t":" Le","z":12.518},{"t":" a","z":11.95},{"t":" known","z":11.648},{"t":" La","z":11.565},{"t":" situated","z":11.507},{"t":" Mon","z":11.438},{"t":" St","z":11.316},{"t":" not","z":11.149},{"t":" Saint","z":11.085},{"t":" City","z":10.866},{"t":" Ch","z":10.846},{"t":" �","z":10.845},{"t":" Versailles","z":10.827},{"t":" Les","z":10.827},{"t":" also","z":10.754},{"t":" par","z":10.666},{"t":" Mont","z":10.589},{"t":" ","z":10.558},{"t":" named","z":10.372},{"t":" L","z":10.338},{"t":" often","z":10.269},{"t":" typically","z":10.154},{"t":" Re","z":10.018},{"t":" E","z":10.018},{"t":" The","z":10.016},{"t":"\n","z":10.011},{"t":" Bast","z":9.965},{"t":" generally","z":9.943},{"t":" Notre","z":9.94},{"t":" \"","z":9.897},{"t":",","z":9.874},{"t":" New","z":9.847},{"t":" F","z":9.799},{"t":" capital","z":9.779},{"t":" Lyon","z":9.741},{"t":" in","z":9.677}],"tail":[{"n":1,"z":-20.595},{"n":2,"z":-19.739},{"n":1,"z":-19.181},{"n":4,"z":-18.877},{"n":2,"z":-18.22},{"n":4,"z":-17.856},{"n":6,"z":-17.237},{"n":7,"z":-16.855},{"n":12,"z":-16.231},{"n":11,"z":-15.856},{"n":24,"z":-15.365},{"n":15,"z":-14.81},{"n":43,"z":-14.293},{"n":49,"z":-13.793},{"n":82,"z":-13.309},{"n":100,"z":-12.766},{"n":150,"z":-12.263},{"n":191,"z":-11.761},{"n":291,"z":-11.273},{"n":343,"z":-10.763},{"n":449,"z":-10.263},{"n":628,"z":-9.749},{"n":721,"z":-9.251},{"n":894,"z":-8.755},{"n":1093,"z":-8.241},{"n":1331,"z":-7.742},{"n":1490,"z":-7.243},{"n":1740,"z":-6.735},{"n":2028,"z":-6.238},{"n":2202,"z":-5.737},{"n":2415,"z":-5.229},{"n":2568,"z":-4.729},{"n":2616,"z":-4.227},{"n":2702,"z":-3.72},{"n":2729,"z":-3.222},{"n":2600,"z":-2.715},{"n":2560,"z":-2.213},{"n":2412,"z":-1.706},{"n":2198,"z":-1.201},{"n":2034,"z":-0.703},{"n":1725,"z":-0.203},{"n":1572,"z":0.305},{"n":1328,"z":0.801},{"n":1130,"z":1.309},{"n":927,"z":1.811},{"n":835,"z":2.318},{"n":646,"z":2.818},{"n":494,"z":3.315},{"n":395,"z":3.825},{"n":337,"z":4.318},{"n":246,"z":4.838},{"n":199,"z":5.321},{"n":116,"z":5.82},{"n":131,"z":6.35},{"n":92,"z":6.829},{"n":68,"z":7.348},{"n":50,"z":7.854},{"n":26,"z":8.352},{"n":31,"z":8.889},{"n":16,"z":9.333}],"vocab":49152},{"prompt":"My favourite programming language is","tokens":["My"," favourite"," programming"," language"," is"],"top":[{"t":" Python","z":19.959},{"t":" Java","z":18.571},{"t":":","z":18.031},{"t":"?","z":17.994},{"t":"\n","z":17.508},{"t":" probably","z":17.307},{"t":"...","z":16.793},{"t":" not","z":16.716},{"t":" **","z":16.635},{"t":" C","z":16.504},{"t":" Rust","z":16.496},{"t":",","z":16.009},{"t":" PHP","z":15.741},{"t":" Kot","z":15.728},{"t":" what","z":15.712},{"t":" it","z":15.7},{"t":" arguably","z":15.61},{"t":"\n  ","z":15.589},{"t":" indeed","z":15.579},{"t":" often","z":15.541},{"t":" python","z":15.513},{"t":" a","z":15.285},{"t":" -","z":15.26},{"t":" definitely","z":15.202},{"t":" likely","z":15.201},{"t":" none","z":15.189},{"t":".","z":15.127},{"t":" [","z":15.071},{"t":" Ruby","z":15.034},{"t":" the","z":15.019},{"t":" (","z":15.019},{"t":" \n","z":14.99},{"t":"\n\n","z":14.907},{"t":" one","z":14.86},{"t":" Go","z":14.858},{"t":" J","z":14.817},{"t":" most","z":14.816},{"t":" still","z":14.776},{"t":"!","z":14.747},{"t":"—","z":14.724}],"tail":[{"n":1,"z":-19.708},{"n":1,"z":-17.643},{"n":1,"z":-17.22},{"n":1,"z":-15.791},{"n":2,"z":-13.354},{"n":2,"z":-12.529},{"n":5,"z":-11.926},{"n":4,"z":-11.208},{"n":8,"z":-10.796},{"n":9,"z":-10.248},{"n":18,"z":-9.614},{"n":20,"z":-9.06},{"n":26,"z":-8.544},{"n":35,"z":-7.936},{"n":68,"z":-7.342},{"n":109,"z":-6.771},{"n":141,"z":-6.224},{"n":212,"z":-5.628},{"n":327,"z":-5.065},{"n":464,"z":-4.485},{"n":638,"z":-3.903},{"n":961,"z":-3.342},{"n":1229,"z":-2.771},{"n":1475,"z":-2.192},{"n":1930,"z":-1.633},{"n":2322,"z":-1.052},{"n":2735,"z":-0.483},{"n":3072,"z":0.092},{"n":3316,"z":0.658},{"n":3369,"z":1.234},{"n":3552,"z":1.804},{"n":3357,"z":2.378},{"n":3234,"z":2.953},{"n":2992,"z":3.522},{"n":2656,"z":4.097},{"n":2296,"z":4.662},{"n":1961,"z":5.24},{"n":1534,"z":5.822},{"n":1200,"z":6.382},{"n":999,"z":6.957},{"n":744,"z":7.542},{"n":551,"z":8.098},{"n":424,"z":8.677},{"n":340,"z":9.234},{"n":227,"z":9.823},{"n":170,"z":10.402},{"n":115,"z":10.953},{"n":77,"z":11.548},{"n":52,"z":12.128},{"n":53,"z":12.698},{"n":34,"z":13.238},{"n":22,"z":13.833},{"n":21,"z":14.405}],"vocab":49152},{"prompt":"To deploy the app, run","tokens":["To"," deploy"," the"," app",","," run"],"top":[{"t":" the","z":20.749},{"t":" it","z":19.516},{"t":" a","z":19.382},{"t":" tests","z":18.05},{"t":" `","z":17.988},{"t":":","z":16.879},{"t":" your","z":16.433},{"t":" an","z":16.239},{"t":" two","z":16.237},{"t":" migrations","z":16.236},{"t":"\n","z":16.088},{"t":" each","z":16.002},{"t":" unit","z":15.886},{"t":" \"","z":15.861},{"t":" multiple","z":15.762},{"t":" in","z":15.65},{"t":" test","z":15.566},{"t":" some","z":15.529},{"t":" on","z":15.43},{"t":" this","z":15.412},{"t":" ","z":15.289},{"t":" local","z":15.256},{"t":" '","z":15.039},{"t":" several","z":14.944},{"t":" three","z":14.94},{"t":" scripts","z":14.917},{"t":" any","z":14.898},{"t":" all","z":14.854},{"t":" these","z":14.831},{"t":" commands","z":14.754},{"t":" specific","z":14.745},{"t":" Python","z":14.68},{"t":" into","z":14.636},{"t":" with","z":14.613},{"t":" our","z":14.554},{"t":" command","z":14.543},{"t":" various","z":14.534},{"t":" np","z":14.473},{"t":" different","z":14.472},{"t":" by","z":14.338}],"tail":[{"n":1,"z":-19.486},{"n":1,"z":-17.821},{"n":1,"z":-15.669},{"n":2,"z":-15.32},{"n":4,"z":-14.058},{"n":1,"z":-13.79},{"n":1,"z":-13.052},{"n":1,"z":-12.31},{"n":5,"z":-11.945},{"n":9,"z":-11.275},{"n":5,"z":-10.705},{"n":8,"z":-10.101},{"n":13,"z":-9.633},{"n":20,"z":-9.13},{"n":26,"z":-8.467},{"n":39,"z":-7.92},{"n":71,"z":-7.35},{"n":93,"z":-6.831},{"n":118,"z":-6.228},{"n":194,"z":-5.634},{"n":282,"z":-5.12},{"n":391,"z":-4.553},{"n":550,"z":-3.98},{"n":648,"z":-3.411},{"n":982,"z":-2.856},{"n":1252,"z":-2.291},{"n":1631,"z":-1.726},{"n":2062,"z":-1.176},{"n":2485,"z":-0.602},{"n":2928,"z":-0.042},{"n":3193,"z":0.511},{"n":3579,"z":1.081},{"n":3490,"z":1.637},{"n":3573,"z":2.204},{"n":3330,"z":2.762},{"n":3230,"z":3.329},{"n":2883,"z":3.889},{"n":2528,"z":4.456},{"n":2068,"z":5.01},{"n":1710,"z":5.576},{"n":1411,"z":6.139},{"n":1056,"z":6.694},{"n":881,"z":7.263},{"n":653,"z":7.823},{"n":477,"z":8.384},{"n":317,"z":8.957},{"n":268,"z":9.504},{"n":189,"z":10.07},{"n":146,"z":10.633},{"n":101,"z":11.193},{"n":89,"z":11.746},{"n":46,"z":12.322},{"n":39,"z":12.914},{"n":12,"z":13.45},{"n":19,"z":14.054}],"vocab":49152},{"prompt":"Once upon a time, there was a","tokens":["Once"," upon"," a"," time",","," there"," was"," a"],"top":[{"t":" young","z":17.532},{"t":" man","z":16.931},{"t":" small","z":16.224},{"t":" woman","z":15.893},{"t":" great","z":15.679},{"t":" group","z":15.292},{"t":" wise","z":15.176},{"t":" mysterious","z":14.932},{"t":" person","z":14.873},{"t":" village","z":14.802},{"t":" town","z":14.768},{"t":" famous","z":14.733},{"t":" little","z":14.574},{"t":" time","z":14.48},{"t":" wealthy","z":14.441},{"t":" big","z":14.371},{"t":" king","z":14.347},{"t":" local","z":14.273},{"t":" brilliant","z":14.231},{"t":" very","z":14.173},{"t":" farmer","z":14.132},{"t":" beautiful","z":14.093},{"t":" world","z":14.019},{"t":" place","z":13.943},{"t":" company","z":13.885},{"t":" powerful","z":13.728},{"t":" magical","z":13.705},{"t":" girl","z":13.593},{"t":" brave","z":13.547},{"t":" city","z":13.52},{"t":" medieval","z":13.496},{"t":" kingdom","z":13.451},{"t":" merchant","z":13.429},{"t":" detective","z":13.392},{"t":" boy","z":13.39},{"t":" lady","z":13.364},{"t":" large","z":13.359},{"t":" rich","z":13.319},{"t":" giant","z":13.292},{"t":" scientist","z":13.265}],"tail":[{"n":1,"z":-17.78},{"n":3,"z":-15.329},{"n":2,"z":-14.846},{"n":3,"z":-14.353},{"n":4,"z":-13.83},{"n":3,"z":-13.408},{"n":17,"z":-12.825},{"n":14,"z":-12.393},{"n":11,"z":-11.806},{"n":28,"z":-11.338},{"n":42,"z":-10.759},{"n":74,"z":-10.274},{"n":93,"z":-9.738},{"n":116,"z":-9.22},{"n":152,"z":-8.708},{"n":225,"z":-8.223},{"n":331,"z":-7.665},{"n":417,"z":-7.163},{"n":512,"z":-6.641},{"n":683,"z":-6.128},{"n":831,"z":-5.618},{"n":1021,"z":-5.1},{"n":1298,"z":-4.584},{"n":1487,"z":-4.068},{"n":1786,"z":-3.556},{"n":1957,"z":-3.034},{"n":2121,"z":-2.511},{"n":2280,"z":-1.997},{"n":2442,"z":-1.483},{"n":2490,"z":-0.97},{"n":2592,"z":-0.454},{"n":2585,"z":0.066},{"n":2555,"z":0.588},{"n":2423,"z":1.107},{"n":2343,"z":1.618},{"n":2218,"z":2.135},{"n":2010,"z":2.646},{"n":1772,"z":3.172},{"n":1597,"z":3.691},{"n":1427,"z":4.199},{"n":1325,"z":4.717},{"n":1120,"z":5.233},{"n":869,"z":5.753},{"n":747,"z":6.267},{"n":660,"z":6.793},{"n":563,"z":7.299},{"n":397,"z":7.821},{"n":354,"z":8.337},{"n":324,"z":8.84},{"n":230,"z":9.374},{"n":168,"z":9.875},{"n":134,"z":10.4},{"n":98,"z":10.922},{"n":66,"z":11.422},{"n":38,"z":12.014},{"n":34,"z":12.486},{"n":19,"z":13.049}],"vocab":49152},{"prompt":"The best way to learn AI engineering is to","tokens":["The"," best"," way"," to"," learn"," AI"," engineering"," is"," to"],"top":[{"t":" start","z":29.946},{"t":" learn","z":27.848},{"t":" dive","z":27.766},{"t":" focus","z":27.437},{"t":" understand","z":27.295},{"t":" have","z":27.287},{"t":" practice","z":27.166},{"t":" take","z":27.138},{"t":" get","z":27.091},{"t":" gain","z":26.972},{"t":" work","z":26.864},{"t":" begin","z":26.856},{"t":" explore","z":26.667},{"t":" apply","z":26.553},{"t":" follow","z":26.363},{"t":" develop","z":26.153},{"t":" immerse","z":26.11},{"t":" study","z":26.031},{"t":" first","z":26.028},{"t":" use","z":25.934},{"t":" read","z":25.78},{"t":" be","z":25.741},{"t":" build","z":25.584},{"t":" go","z":25.513},{"t":" familiarize","z":25.475},{"t":" combine","z":25.458},{"t":" choose","z":25.432},{"t":" try","z":25.43},{"t":" pursue","z":25.427},{"t":" spend","z":25.426},{"t":" create","z":25.378},{"t":" do","z":25.371},{"t":" consider","z":25.24},{"t":" experience","z":25.238},{"t":" see","z":25.234},{"t":" give","z":25.121},{"t":" break","z":25.101},{"t":" join","z":25.068},{"t":" make","z":25.029},{"t":" design","z":24.988}],"tail":[{"n":1,"z":-10.486},{"n":2,"z":-9.631},{"n":1,"z":-8.953},{"n":1,"z":-7.154},{"n":4,"z":-6.65},{"n":3,"z":-6.007},{"n":6,"z":-5.457},{"n":8,"z":-4.91},{"n":7,"z":-4.252},{"n":10,"z":-3.641},{"n":24,"z":-3.054},{"n":37,"z":-2.493},{"n":59,"z":-1.899},{"n":53,"z":-1.304},{"n":78,"z":-0.744},{"n":85,"z":-0.115},{"n":105,"z":0.464},{"n":168,"z":1.028},{"n":285,"z":1.642},{"n":391,"z":2.226},{"n":599,"z":2.829},{"n":792,"z":3.405},{"n":1052,"z":3.985},{"n":1402,"z":4.583},{"n":1803,"z":5.173},{"n":2162,"z":5.759},{"n":2451,"z":6.347},{"n":2755,"z":6.935},{"n":3093,"z":7.526},{"n":3242,"z":8.115},{"n":3326,"z":8.698},{"n":3340,"z":9.295},{"n":3191,"z":9.876},{"n":2963,"z":10.468},{"n":2636,"z":11.057},{"n":2327,"z":11.644},{"n":1975,"z":12.232},{"n":1603,"z":12.819},{"n":1329,"z":13.412},{"n":1127,"z":14},{"n":904,"z":14.595},{"n":741,"z":15.187},{"n":605,"z":15.773},{"n":463,"z":16.364},{"n":388,"z":16.956},{"n":334,"z":17.542},{"n":292,"z":18.135},{"n":193,"z":18.724},{"n":157,"z":19.331},{"n":137,"z":19.897},{"n":86,"z":20.514},{"n":95,"z":21.079},{"n":73,"z":21.658},{"n":50,"z":22.27},{"n":36,"z":22.807},{"n":21,"z":23.457},{"n":28,"z":23.975},{"n":13,"z":24.598}],"vocab":49152}]}</script>
+<script>
+const DATA = JSON.parse(document.getElementById('viz-data').textContent);
+const $ = (id) => document.getElementById(id);
+const SHOW = 15;
+let counts = new Map(), total = 0, last = null;
+
+$('prompt').innerHTML = DATA.prompts.map((p, i) => `<option value="${i}">${esc(p.prompt)} …</option>`).join('');
+
+/**
+ * The distribution is a list of entries in descending-logit order:
+ *   - one entry per top token (n = 1)
+ *   - then one entry per tail histogram bin (n = number of tokens in that bin, each with the bin's mean logit)
+ * `p` is the probability of ONE token in the entry, so the entry's mass is n * p.
+ */
+function entries(prompt, T) {
+  const zmax = prompt.top[0].z;
+  const list = [
+    ...prompt.top.map((t, i) => ({ i, n: 1, z: t.z, tail: false })),
+    ...[...prompt.tail].sort((a, b) => b.z - a.z).map((b) => ({ n: b.n, z: b.z, tail: true })),
+  ];
+  if (T === 0) return list.map((e, k) => ({ ...e, p: k === 0 ? 1 : 0 }));
+  const w = list.map((e) => Math.exp((e.z - zmax) / T));
+  const Z = list.reduce((s, e, k) => s + e.n * w[k], 0);
+  return list.map((e, k) => ({ ...e, p: w[k] / Z }));
+}
+
+/** Apply top-k, then top-p on the renormalised result. Returns entries with `keepN` tokens kept and renormalised `q`. */
+function filtered(list, k, topP) {
+  let budget = k > 0 ? k : Infinity;
+  let out = list.map((e) => { const keepN = Math.min(e.n, Math.max(0, budget)); budget -= keepN; return { ...e, keepN }; });
+  if (topP < 1) {
+    const Zk = out.reduce((s, e) => s + e.keepN * e.p, 0);
+    let cum = 0;
+    out = out.map((e) => {
+      if (cum >= topP || e.keepN === 0) return { ...e, keepN: 0 };
+      const need = Math.ceil((topP - cum) / (e.p / Zk) - 1e-9); // tokens of this entry needed to reach topP
+      const keepN = Math.min(e.keepN, Math.max(1, need));
+      cum += (keepN * e.p) / Zk;
+      return { ...e, keepN };
+    });
+  }
+  const Z = out.reduce((s, e) => s + e.keepN * e.p, 0);
+  return out.map((e) => ({ ...e, q: e.keepN ? e.p / Z : 0 }));
+}
+
+function state() {
+  const p = DATA.prompts[+$('prompt').value];
+  const T = +$('temp').value, k = +$('topk').value, tp = +$('topp').value;
+  const base = entries(p, 1);
+  const list = filtered(entries(p, T), k, tp);
+  return { p, T, k, tp, base, list };
+}
+
+function render() {
+  const s = state();
+  $('tempV').textContent = s.T.toFixed(2) + (s.T === 0 ? ' (greedy)' : '');
+  $('topkV').textContent = s.k === 0 ? 'off' : s.k;
+  $('toppV').textContent = s.tp >= 1 ? 'off (1.0)' : s.tp.toFixed(2);
+  $('promptView').innerHTML = esc(s.p.prompt) + (last !== null ? `<span class="next">${esc(last)}</span>` : '<span class="muted"> ▍</span>');
+
+  // Bars: the first SHOW top tokens individually, then the whole tail aggregated.
+  const tailIdx = s.list.map((e, k) => (e.tail ? k : -1)).filter((k) => k >= 0);
+  const tailTokens = tailIdx.reduce((a, k) => a + s.list[k].n, 0);
+  const tailBase = tailIdx.reduce((a, k) => a + s.base[k].n * s.base[k].p, 0);
+  const tailOut = tailIdx.reduce((a, k) => a + s.list[k].keepN * s.list[k].q, 0);
+  const tailKept = tailIdx.reduce((a, k) => a + s.list[k].keepN, 0);
+  const rows = s.list.slice(0, SHOW).map((e, k) => ({ label: JSON.stringify(s.p.top[e.i].t), base: s.base[k].p, out: e.q, cut: !e.keepN, other: false }));
+  rows.push({ label: `everything else (${tailTokens.toLocaleString()} tokens${tailKept && tailKept < tailTokens ? `, ${tailKept.toLocaleString()} kept` : ''})`, base: tailBase, out: tailOut, cut: !tailKept, other: true });
+  const maxP = Math.max(...rows.map((r) => Math.max(r.out, r.base)), 0.01);
+  $('bars').innerHTML = rows.map((r) => `<div class="b ${r.cut ? 'cut' : ''} ${r.other ? 'other' : ''}">
+      <span class="tk" title="${esc(r.label)}">${esc(r.label)}</span>
+      <span class="track"><span class="ghost" style="width:${(r.base / maxP) * 100}%"></span><span class="fill" style="width:${(r.out / maxP) * 100}%"></span></span>
+      <span class="pct">${(r.out * 100).toFixed(r.out < 0.001 && r.out > 0 ? 3 : 1)}%</span></div>`).join('');
+
+  // Entropy over individual tokens (the tail bins contribute n tokens each).
+  const H = -s.list.reduce((acc, e) => acc + (e.q > 0 ? e.keepN * e.q * Math.log2(e.q) : 0), 0);
+  const kept = s.list.reduce((a, e) => a + (e.q > 0 ? e.keepN : 0), 0);
+  $('metrics').innerHTML = `<span class="stat">entropy <b>${H.toFixed(2)}</b> bits</span><span class="stat">≈ <b>${Math.pow(2, H) > 1000 ? Math.round(Math.pow(2, H)).toLocaleString() : Math.pow(2, H).toFixed(1)}</b> effective choices</span><span class="stat">candidates kept <b>${kept === s.p.vocab ? 'all ' + kept.toLocaleString() : kept.toLocaleString()}</b></span><span class="stat">P(top-1) <b>${(s.list[0].q * 100).toFixed(1)}%</b></span>`;
+
+  let note;
+  if (s.T === 0) note = '<b>Greedy:</b> always the argmax. In production this is still <b>not</b> fully deterministic (batched GPU float math, MoE routing, model updates), and it is not "more correct", just more confident.';
+  else if (s.T > 1.3 && s.k === 0 && tailKept > 1000) note = `<b>High temperature:</b> the tail of mostly-garbage tokens now holds <b>${(tailOut * 100).toFixed(0)}%</b> of the probability and <b>${tailKept.toLocaleString()}</b> tokens are still candidates. This is where nonsense comes from. Note that top-p alone doesn't save you here, because the tail is now a big share of the mass. Lower the temperature, or use top-k.`;
+  else if (s.tp < 1 || s.k > 0) note = 'Filters remove the long tail <i>before</i> sampling, then renormalise what is left. Tune <b>either</b> temperature <b>or</b> top-p, not both, since they interact.';
+  else note = 'At T=1 you sample from the model\'s raw distribution. Lower T sharpens it toward the top token. Higher T flattens it.';
+  $('note').innerHTML = note;
+  renderHist();
+}
+
+function sampleOnce() {
+  const s = state();
+  let r = Math.random();
+  for (const e of s.list) { r -= e.keepN * e.q; if (r < 0) return e.tail ? '«other»' : s.p.top[e.i].t; }
+  return s.p.top[0].t;
+}
+
+function renderHist() {
+  if (!total) { $('hist').innerHTML = '<span class="muted">Press "Sample ×200".</span>'; $('histN').textContent = ''; return; }
+  const rows = [...counts].sort((a, b) => b[1] - a[1]).slice(0, 12);
+  const max = rows[0][1];
+  $('histN').textContent = `(${total} draws, ${counts.size} distinct tokens)`;
+  $('hist').innerHTML = rows.map(([t, n]) => `<div class="b"><span class="tk">${esc(t === '«other»' ? t : JSON.stringify(t))}</span><span class="track"><span class="fill" style="width:${(n / max) * 100}%"></span></span><span class="pct">${n}</span></div>`).join('');
+}
+
+function draw(n) { for (let i = 0; i < n; i++) { const t = sampleOnce(); counts.set(t, (counts.get(t) || 0) + 1); total++; last = t; } render(); }
+function reset() { counts = new Map(); total = 0; last = null; }
+
+$('s1').onclick = () => draw(1);
+$('s100').onclick = () => draw(200);
+$('clear').onclick = () => { reset(); render(); };
+['temp', 'topk', 'topp'].forEach((id) => $(id).oninput = () => { reset(); render(); });
+$('prompt').onchange = () => { reset(); render(); };
+const preset = (T, k, p) => { $('temp').value = T; $('topk').value = k; $('topp').value = p; reset(); render(); };
+$('preset-extract').onclick = () => preset(0, 0, 1);
+$('preset-chat').onclick = () => preset(0.7, 0, 0.95);
+$('preset-wild').onclick = () => preset(1.8, 0, 1);
+
+function esc(s) { return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+render();
+</script>
+</body>
+</html>

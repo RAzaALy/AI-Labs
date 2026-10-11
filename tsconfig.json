@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "types": ["node"]
+  },
+  "include": ["shared/**/*.ts", "scripts/**/*.ts", "phase-*/labs/**/*.ts", "phase-*/project/**/*.ts"],
+  "exclude": ["node_modules", "**/node_modules", "**/.next"]
+}

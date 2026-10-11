@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Attention Heatmap</title>
+<style>
+  :root { --bg: #f7f7f5; --card: #ffffff; --ink: #1d1d1b; --muted: #6b6b66; --line: #e3e2dc; --accent: #3b5bdb; --accent-rgb: 59, 91, 219; --accent-soft: #e7ecff; --warn: #c2410c; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #151514; --card: #1f1f1d; --ink: #ececea; --muted: #a3a39c; --line: #34342f; --accent: #8da2fb; --accent-rgb: 141, 162, 251; --accent-soft: #262b45; --warn: #fb923c; } }
+  :root[data-theme="dark"] { --bg: #151514; --card: #1f1f1d; --ink: #ececea; --muted: #a3a39c; --line: #34342f; --accent: #8da2fb; --accent-rgb: 141, 162, 251; --accent-soft: #262b45; --warn: #fb923c; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1150px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 1.6rem; margin: 0 0 4px; } h2 { font-size: 1.05rem; margin: 0 0 8px; }
+  p.lead { color: var(--muted); margin: 0 0 16px; max-width: 82ch; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+  .layout { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 16px; }
+  @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
+  button, select, input[type=text] { font: inherit; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--ink); }
+  button { cursor: pointer; } button:hover { border-color: var(--accent); }
+  button.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+  input[type=text] { flex: 1; min-width: 220px; }
+  input[type=range] { flex: 1; min-width: 140px; accent-color: var(--accent); }
+  .heat { overflow-x: auto; }
+  table.hm { border-collapse: collapse; font: 12px ui-monospace, Menlo, Consolas, monospace; }
+  table.hm th { font-weight: 500; padding: 2px 4px; color: var(--muted); }
+  table.hm th.col { writing-mode: vertical-rl; transform: rotate(180deg); height: 70px; text-align: left; }
+  table.hm th.rowh { text-align: right; cursor: pointer; }
+  table.hm th.rowh.sel { color: var(--accent); font-weight: 700; }
+  table.hm td { width: 34px; height: 30px; text-align: center; border: 1px solid var(--line); font-size: 10px; cursor: pointer; }
+  table.hm td.masked { background: repeating-linear-gradient(45deg, transparent 0 4px, var(--line) 4px 5px); color: transparent; }
+  .sentence { font: 18px ui-monospace, Menlo, Consolas, monospace; display: flex; flex-wrap: wrap; gap: 6px; margin: 34px 0 8px; position: relative; }
+  .sentence span { padding: 3px 6px; border-radius: 6px; border: 1px solid var(--line); position: relative; }
+  .sentence span.q { outline: 2px solid var(--ink); }
+  .muted { color: var(--muted); font-size: 13px; }
+  .callout { border-left: 3px solid var(--warn); padding: 6px 12px; background: var(--bg); border-radius: 0 8px 8px 0; margin-top: 10px; font-size: 14px; }
+  .math { font: 13px ui-monospace, Menlo, Consolas, monospace; background: var(--bg); padding: 8px 10px; border-radius: 8px; overflow-x: auto; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Attention: who looks at whom</h1>
+  <p class="lead">Attention lets each token pull information from earlier tokens. Every token emits a <b>query</b>; every earlier token offers a <b>key</b>; the scores <span class="math">q·k/√d</span> go through a softmax and become the weights you see. <b>This is a teaching toy:</b> the query/key vectors are hand-designed (real models <i>learn</i> them across dozens of heads and layers). For real GPT-2 attention, open <a href="https://poloclub.github.io/transformer-explainer/" target="_blank" rel="noopener">Transformer Explainer</a>.</p>
+
+  <section class="card">
+    <div class="row">
+      <button data-s="0" class="on">The cat sat on the mat because it was tired</button>
+      <button data-s="1">Alice called Bob because she needed help</button>
+      <button data-s="2">The server crashed so the engineer restarted it</button>
+    </div>
+    <div class="row"><input type="text" id="custom" placeholder="…or type your own sentence and press Enter"></div>
+    <div class="row">
+      <span class="muted">Head:</span>
+      <select id="head">
+        <option value="coref">Head A · pronoun → noun (coreference)</option>
+        <option value="prev">Head B · previous token</option>
+        <option value="subj">Head C · verb → its subject</option>
+        <option value="sink">Head D · "attention sink" on first token</option>
+        <option value="avg">Average of all heads</option>
+      </select>
+      <label class="muted"><input type="checkbox" id="causal" checked> causal mask</label>
+    </div>
+    <div class="row">
+      <label class="muted" for="sharp">Sharpness (scale on q·k):</label>
+      <input type="range" id="sharp" min="0.1" max="3" step="0.1" value="1">
+      <b id="sharpV" class="muted"></b>
+    </div>
+  </section>
+
+  <div class="layout">
+    <section class="card">
+      <h2>Attention weights <span class="muted">(rows = query token, columns = key token; each row sums to 1)</span></h2>
+      <div class="heat" id="heat"></div>
+    </section>
+    <section class="card">
+      <h2>Where does <span id="qName">…</span> look?</h2>
+      <div class="muted">Click a row label or cell to choose the query token.</div>
+      <div class="sentence" id="sentence"></div>
+      <div class="math" id="math"></div>
+      <div class="callout" id="note"></div>
+    </section>
+  </div>
+</main>
+
+<script>
+const SENTENCES = [
+  'The cat sat on the mat because it was tired',
+  'Alice called Bob because she needed help',
+  'The server crashed so the engineer restarted it',
+];
+// Tiny lexicon → feature dims: [animal, thing, person, pronoun, verb, female, male, function-word]
+const LEX = {
+  cat: [1,0,0,0,0,0,0,0], dog: [1,0,0,0,0,0,0,0], mat: [0,1,0,0,0,0,0,0], server: [0,1,0,0,0,0,0,0], app: [0,1,0,0,0,0,0,0],
+  engineer: [0,0,1,0,0,0,0,0], alice: [0,0,1,0,0,1,0,0], bob: [0,0,1,0,0,0,1,0], user: [0,0,1,0,0,0,0,0], help: [0,1,0,0,0,0,0,0],
+  it: [0,0,0,1,0,0,0,0], she: [0,0,0,1,0,1,0,0], he: [0,0,0,1,0,0,1,0], they: [0,0,0,1,0,0,0,0],
+  sat: [0,0,0,0,1,0,0,0], called: [0,0,0,0,1,0,0,0], needed: [0,0,0,0,1,0,0,0], crashed: [0,0,0,0,1,0,0,0], restarted: [0,0,0,0,1,0,0,0], was: [0,0,0,0,1,0,0,0], tired: [0,0,0,0,0,0,0,0],
+  the: [0,0,0,0,0,0,0,1], on: [0,0,0,0,0,0,0,1], because: [0,0,0,0,0,0,0,1], so: [0,0,0,0,0,0,0,1], a: [0,0,0,0,0,0,0,1],
+};
+function features(word) {
+  const w = word.toLowerCase();
+  if (LEX[w]) return LEX[w];
+  if (/^[A-Z]/.test(word)) return [0,0,1,0,0,0,0,0];       // capitalised → probably a person
+  if (/(ed|es|s)$/.test(w) && w.length > 4) return [0,0,0,0,1,0,0,0]; // crude verb guess
+  return [0,1,0,0,0,0,0,0];                                  // default: a thing
+}
+
+let tokens = [], query = 0;
+const $ = (id) => document.getElementById(id);
+
+// Each head = a pair of functions building q_i and k_j. Weights = softmax(scale · q·k / √d).
+const HEADS = {
+  coref: { // pronouns ask for referents; nouns answer; gender must agree
+    q: (_f, i) => PRONOUN_QUERY[tokens[i].toLowerCase()] || zeros(8),
+    k: (f) => (f[3] ? zeros(8) : [f[0], f[1], f[2], 0, 0, f[5], f[6], 0]), // pronouns are not referents
+    why: 'Pronouns emit a query that says "I need a noun of this kind" ("it" wants animals or things, "she" wants a female person). Nouns emit matching keys, so the pronoun copies its referent\'s information into its own vector.',
+  },
+  prev: {
+    q: (_f, i) => onehot(i - 1, tokens.length).map((x) => 6 * x),
+    k: (_f, j) => onehot(j, tokens.length),
+    why: 'Uses position only: each token looks one step back. Real models have heads like this. Combined with others, they form "induction heads" that copy patterns (a big part of in-context learning).',
+  },
+  subj: { // verbs look for the closest preceding person/animal/thing
+    q: (f) => f[4] ? [3, 2, 3, 0, 0, 0, 0, 0] : zeros(8),
+    k: (f, j, i) => [f[0], f[1], f[2], 0, 0, 0, 0, 0].map((x) => x * (1 + 0.15 * Math.max(0, j - (i ?? 0) + 6))),
+    why: 'Verbs ask "who is doing this?" and nouns answer. Recency nudges the closest noun to win, a crude version of syntax that real heads learn.',
+  },
+  sink: {
+    q: () => [0, 0, 0, 0, 0, 0, 0, 3],
+    k: (_f, j) => [0, 0, 0, 0, 0, 0, 0, j === 0 ? 2 : 0],
+    why: 'Many real heads park most of their weight on the first token when they have nothing useful to do (an "attention sink"). Softmax must sum to 1, so the weight has to go somewhere.',
+  },
+};
+const PRONOUN_QUERY = {
+  it: [3, 3, 0, 0, 0, 0, 0, 0],   // an animal or a thing, not a person
+  she: [0, 0, 3, 0, 0, 4, 0, 0],  // a person, female
+  he: [0, 0, 3, 0, 0, 0, 4, 0],   // a person, male
+  they: [2, 2, 2, 0, 0, 0, 0, 0],
+};
+const zeros = (n) => new Array(n).fill(0);
+const onehot = (i, n) => zeros(n).map((_, j) => (j === i ? 1 : 0));
+const dot = (a, b) => a.reduce((s, x, i) => s + x * (b[i] || 0), 0);
+
+function weightsFor(headName) {
+  if (headName === 'avg') {
+    const all = Object.keys(HEADS).map(weightsFor);
+    return all[0].map((row, i) => row.map((_, j) => all.reduce((s, m) => s + m[i][j], 0) / all.length));
+  }
+  const h = HEADS[headName], scale = +$('sharp').value, causal = $('causal').checked;
+  const F = tokens.map(features);
+  return tokens.map((_, i) => {
+    const q = h.q(F[i], i);
+    const scores = tokens.map((_, j) => {
+      if (causal && j > i) return -Infinity;
+      const k = h.k(F[j], j, i);
+      return (scale * dot(q, k)) / Math.sqrt(q.length);
+    });
+    const m = Math.max(...scores.filter(Number.isFinite));
+    const e = scores.map((s) => (Number.isFinite(s) ? Math.exp(s - m) : 0));
+    const Z = e.reduce((a, b) => a + b, 0);
+    return e.map((x) => x / Z);
+  });
+}
+
+function render() {
+  $('sharpV').textContent = (+$('sharp').value).toFixed(1) + '×';
+  const head = $('head').value, W = weightsFor(head), causal = $('causal').checked;
+  let html = '<table class="hm"><tr><th></th>' + tokens.map((t) => `<th class="col">${esc(t)}</th>`).join('') + '</tr>';
+  W.forEach((row, i) => {
+    html += `<tr><th class="rowh ${i === query ? 'sel' : ''}" data-q="${i}">${esc(tokens[i])}</th>`;
+    row.forEach((w, j) => {
+      const masked = causal && j > i;
+      html += `<td data-q="${i}" class="${masked ? 'masked' : ''}" title="${esc(tokens[i])} → ${esc(tokens[j])}: ${w.toFixed(3)}" style="background:rgba(var(--accent-rgb), ${masked ? 0 : w.toFixed(3)}); color:${w > 0.55 ? '#fff' : 'inherit'}">${masked ? '' : w >= 0.005 ? w.toFixed(2).replace(/^0/, '') : ''}</td>`;
+    });
+    html += '</tr>';
+  });
+  $('heat').innerHTML = html + '</table>';
+
+  $('qName').textContent = `"${tokens[query]}"`;
+  const row = W[query];
+  $('sentence').innerHTML = tokens.map((t, j) => `<span class="${j === query ? 'q' : ''}" style="background:rgba(var(--accent-rgb), ${(row[j] * 0.9).toFixed(3)}); color:${row[j] > 0.55 ? '#fff' : 'inherit'}" title="${row[j].toFixed(3)}">${esc(t)}</span>`).join('');
+  const top = row.map((w, j) => ({ w, j })).sort((a, b) => b.w - a.w).slice(0, 3).filter((x) => x.w > 0.001);
+  $('math').innerHTML = `weights("${esc(tokens[query])}") = softmax( ${(+$('sharp').value).toFixed(1)} · q·kⱼ / √d )<br>top: ` + top.map((x) => `${esc(tokens[x.j])} ${(x.w * 100).toFixed(0)}%`).join(' · ');
+  const tie = top.length > 1 && Math.abs(top[0].w - top[1].w) < 0.02 && top[0].w > 0.3;
+  $('note').innerHTML = (HEADS[head]?.why || 'Real layers run many heads in parallel, then concatenate and mix their outputs. Averaging is just a way to see them together.')
+    + (tie && head === 'coref' ? `<br><br><b>Tie between "${esc(tokens[top[0].j])}" and "${esc(tokens[top[1].j])}":</b> with the causal mask, "${esc(tokens[query])}" cannot see the words after it yet (e.g. "tired"). Real models resolve this in later layers, at later tokens, once the disambiguating word has arrived.` : '')
+    + (+$('sharp').value < 0.5 ? '<br><br><b>Low sharpness:</b> scores are squashed, so attention spreads evenly and the signal blurs. That is why scores are divided by <b>√d</b>, not by more: too flat and nothing stands out, too sharp and gradients vanish during training.' : '')
+    + (!causal ? '<br><br><b>Mask off:</b> tokens can see the future. Encoders (like embedding models) work this way. Generators cannot, because the future has not been written yet.' : '');
+}
+
+function setSentence(s) {
+  tokens = s.match(/[\p{L}\p{N}'’]+|[^\s\p{L}\p{N}]/gu) || ['(empty)'];
+  const pron = tokens.findIndex((t) => /^(it|she|he|they)$/i.test(t));
+  query = pron >= 0 ? pron : tokens.length - 1;
+  render();
+}
+
+document.querySelectorAll('[data-s]').forEach((b) => b.onclick = () => {
+  document.querySelectorAll('[data-s]').forEach((x) => x.classList.remove('on')); b.classList.add('on');
+  setSentence(SENTENCES[+b.dataset.s]);
+});
+$('custom').onkeydown = (e) => { if (e.key === 'Enter' && e.target.value.trim()) { document.querySelectorAll('[data-s]').forEach((x) => x.classList.remove('on')); setSentence(e.target.value.trim()); } };
+$('heat').onclick = (e) => { const q = e.target.dataset?.q; if (q !== undefined) { query = +q; render(); } };
+['head', 'causal', 'sharp'].forEach((id) => $(id).oninput = render);
+function esc(s) { return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+setSentence(SENTENCES[0]);
+</script>
+</body>
+</html>

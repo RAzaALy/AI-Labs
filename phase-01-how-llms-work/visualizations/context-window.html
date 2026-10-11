@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Context Window Budget</title>
+<style>
+  :root { --bg: #f7f7f5; --card: #ffffff; --ink: #1d1d1b; --muted: #6b6b66; --line: #e3e2dc; --accent: #3b5bdb; --accent-soft: #e7ecff; --warn: #c2410c; --bad: #dc2626;
+    --c-sys: #6366f1; --c-tools: #8b5cf6; --c-docs: #f59e0b; --c-sum: #14b8a6; --c-turn: #3b82f6; --c-now: #0ea5e9; --c-out: #10b981; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #151514; --card: #1f1f1d; --ink: #ececea; --muted: #a3a39c; --line: #34342f; --accent: #8da2fb; --accent-soft: #262b45; --warn: #fb923c; --bad: #f87171; } }
+  :root[data-theme="dark"] { --bg: #151514; --card: #1f1f1d; --ink: #ececea; --muted: #a3a39c; --line: #34342f; --accent: #8da2fb; --accent-soft: #262b45; --warn: #fb923c; --bad: #f87171; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1150px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 1.6rem; margin: 0 0 4px; } h2 { font-size: 1.05rem; margin: 0 0 8px; }
+  p.lead { color: var(--muted); margin: 0 0 16px; max-width: 82ch; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+  .layout { display: grid; grid-template-columns: 330px minmax(0, 1fr); gap: 16px; }
+  @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+  label.ctl { display: block; margin: 10px 0 0; font-size: 14px; }
+  label.ctl b { float: right; font-variant-numeric: tabular-nums; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  select, button { font: inherit; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--ink); }
+  button { cursor: pointer; } button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
+  .stack { display: flex; height: 46px; border-radius: 8px; overflow: hidden; border: 1px solid var(--line); background: var(--bg); position: relative; }
+  .seg { height: 100%; min-width: 0; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 11px; white-space: nowrap; overflow: hidden; border-right: 1px solid rgba(255,255,255,.35); }
+  .overflow { background: repeating-linear-gradient(45deg, var(--bad) 0 6px, transparent 6px 12px); }
+  .legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: 13px; margin-top: 8px; }
+  .legend span::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 2px; background: var(--c); margin-right: 5px; }
+  .turns { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 8px; }
+  .turn { width: 18px; height: 18px; border-radius: 3px; font-size: 9px; display: flex; align-items: center; justify-content: center; color: #fff; background: var(--c-turn); }
+  .turn.dropped { background: transparent; border: 1px dashed var(--muted); color: var(--muted); }
+  .turn.summ { background: var(--c-sum); }
+  .stat { display: inline-block; padding: 4px 10px; border-radius: 999px; background: var(--accent-soft); margin: 2px 4px 2px 0; font-size: 13px; }
+  .stat.bad { background: var(--bad); color: #fff; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .callout { border-left: 3px solid var(--warn); padding: 6px 12px; background: var(--bg); border-radius: 0 8px 8px 0; margin-top: 10px; font-size: 14px; }
+  svg text { fill: var(--muted); font-size: 11px; }
+  .axis { stroke: var(--line); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Context window = your request payload budget</h1>
+  <p class="lead">The model is <b>stateless</b>: every turn, your backend re-sends the system prompt, tool definitions, retrieved docs and the whole conversation, and the answer has to fit in the same window. Add turns and watch what happens when the payload outgrows the window, and what it costs.</p>
+
+  <div class="layout">
+    <section class="card">
+      <h2>Payload settings</h2>
+      <label class="ctl" for="win">Context window</label>
+      <select id="win" style="width:100%">
+        <option value="8192">8K (small local model)</option>
+        <option value="32768" selected>32K</option>
+        <option value="131072">128K</option>
+        <option value="200000">200K</option>
+        <option value="1000000">1M (current frontier, e.g. Claude 5.x)</option>
+      </select>
+      <label class="ctl" for="sys">System prompt <b id="sysV"></b></label><input type="range" id="sys" min="100" max="8000" step="100" value="1200">
+      <label class="ctl" for="tools">Tool definitions (JSON schemas) <b id="toolsV"></b></label><input type="range" id="tools" min="0" max="12000" step="250" value="2500">
+      <label class="ctl" for="docs">Retrieved documents (RAG) <b id="docsV"></b></label><input type="range" id="docs" min="0" max="40000" step="500" value="6000">
+      <label class="ctl" for="perTurn">Tokens per turn (user + assistant) <b id="perTurnV"></b></label><input type="range" id="perTurn" min="100" max="4000" step="50" value="700">
+      <label class="ctl" for="out">Reserved for output (max_tokens) <b id="outV"></b></label><input type="range" id="out" min="256" max="32000" step="256" value="4096">
+      <label class="ctl" for="strategy">When it overflows</label>
+      <select id="strategy" style="width:100%">
+        <option value="none">Do nothing (request fails)</option>
+        <option value="slide" selected>Sliding window (drop oldest turns)</option>
+        <option value="summ">Summarise dropped turns (~400 tokens)</option>
+      </select>
+      <label class="ctl" for="price">Input price</label>
+      <select id="price" style="width:100%">
+        <option value="2">$2 / MTok (e.g. Claude Sonnet 5.5, GPT-6.1 Sol)</option>
+        <option value="4">$4 / MTok (Claude Opus 5.5)</option>
+        <option value="0.1">$0.10 / MTok (Claude Haiku 5.5 from-price, GPT-6 Luna)</option>
+      </select>
+    </section>
+
+    <div>
+      <section class="card">
+        <div class="row">
+          <button class="primary" id="add1">+1 turn</button>
+          <button id="add10">+10 turns</button>
+          <button id="reset">Reset</button>
+          <span class="muted" id="turnCount"></span>
+        </div>
+        <div class="stack" id="stack"></div>
+        <div class="legend">
+          <span style="--c:var(--c-sys)">system</span><span style="--c:var(--c-tools)">tools</span><span style="--c:var(--c-docs)">retrieved docs</span>
+          <span style="--c:var(--c-sum)">summary</span><span style="--c:var(--c-turn)">history</span><span style="--c:var(--c-now)">new message</span><span style="--c:var(--c-out)">reserved output</span>
+        </div>
+        <div id="stats" style="margin-top:8px"></div>
+        <div class="turns" id="turns"></div>
+        <div class="callout" id="note"></div>
+      </section>
+
+      <section class="card">
+        <h2>Input tokens billed per request, as the chat grows</h2>
+        <svg id="chart" viewBox="0 0 640 220" role="img" aria-label="Input tokens per turn"></svg>
+        <div id="costs"></div>
+        <p class="muted">The dashed line is an <i>illustrative</i> prompt-cache scenario where the unchanged prefix is billed at ~10% (real cache rules, minimum sizes and write costs are covered in Phase 2).</p>
+      </section>
+    </div>
+  </div>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const SUMMARY_TOKENS = 400;
+let turns = 0;
+let history = []; // billed input tokens per request so far, for the chart
+
+function fmt(n) { return n >= 1e6 ? (n / 1e6).toFixed(2) + 'M' : n >= 1e3 ? (n / 1e3).toFixed(1) + 'K' : String(Math.round(n)); }
+function cfg() {
+  return { win: +$('win').value, sys: +$('sys').value, tools: +$('tools').value, docs: +$('docs').value, per: +$('perTurn').value, out: +$('out').value, strategy: $('strategy').value, price: +$('price').value };
+}
+
+/** What would the request for turn n look like? */
+function plan(c, n) {
+  const fixed = c.sys + c.tools + c.docs;
+  const newMsg = Math.round(c.per * 0.4); // the new user message
+  const past = Math.max(0, n - 1);        // completed turns before this one
+  const budget = c.win - c.out - fixed - newMsg;
+  let kept = past, summarized = false;
+  if (c.strategy !== 'none' && past * c.per > budget) {
+    const room = c.strategy === 'summ' ? budget - SUMMARY_TOKENS : budget;
+    kept = Math.max(0, Math.floor(room / c.per));
+    summarized = c.strategy === 'summ' && kept < past;
+  }
+  const histTokens = kept * c.per;
+  const input = fixed + (summarized ? SUMMARY_TOKENS : 0) + histTokens + newMsg;
+  return { fixed, newMsg, past, kept, dropped: past - kept, summarized, histTokens, input, total: input + c.out, overflow: Math.max(0, input + c.out - c.win), budget };
+}
+
+function render() {
+  const c = cfg();
+  for (const id of ['sys', 'tools', 'docs', 'perTurn', 'out']) $(id + 'V').textContent = fmt(+$(id).value);
+  const p = plan(c, Math.max(1, turns));
+  $('turnCount').textContent = `turn ${turns} · ${p.past} previous turns`;
+
+  const scale = Math.max(c.win, p.total);
+  const pct = (x) => (x / scale) * 100 + '%';
+  const segs = [
+    ['system', c.sys, 'var(--c-sys)'], ['tools', c.tools, 'var(--c-tools)'], ['docs', c.docs, 'var(--c-docs)'],
+    ['summary', p.summarized ? SUMMARY_TOKENS : 0, 'var(--c-sum)'], ['history', p.histTokens, 'var(--c-turn)'],
+    ['new msg', p.newMsg, 'var(--c-now)'], ['output', c.out, 'var(--c-out)'],
+  ];
+  $('stack').innerHTML = segs.filter((s) => s[1] > 0).map(([n, v, col]) => `<div class="seg" style="width:${pct(v)}; background:${col}" title="${n}: ${fmt(v)}">${(v / scale) > 0.07 ? n + ' ' + fmt(v) : ''}</div>`).join('')
+    + (p.overflow ? `<div style="position:absolute; left:${pct(c.win)}; top:0; bottom:0; right:0" class="overflow" title="overflow"></div>` : '');
+
+  const failing = p.overflow > 0;
+  $('stats').innerHTML = `<span class="stat">input <b>${fmt(p.input)}</b></span><span class="stat">+ output reserve <b>${fmt(c.out)}</b></span><span class="stat">window <b>${fmt(c.win)}</b></span>`
+    + `<span class="stat ${failing ? 'bad' : ''}">${failing ? 'OVER by ' + fmt(p.overflow) + ': request rejected' : 'fits · ' + Math.round((p.total / c.win) * 100) + '% used'}</span>`;
+
+  const shown = Math.min(p.past, 120);
+  $('turns').innerHTML = Array.from({ length: shown }, (_, i) => {
+    const idx = p.past - shown + i;
+    const dropped = idx < p.dropped;
+    return `<div class="turn ${dropped ? (p.summarized ? 'summ' : 'dropped') : ''}" title="turn ${idx + 1}">${idx + 1}</div>`;
+  }).join('');
+
+  let note;
+  if (p.budget < 0) note = '⚠️ The <b>fixed</b> parts alone (system + tools + docs + output reserve) do not fit. Trim tool schemas or retrieve fewer documents. Many agents hit this with 50+ tools.';
+  else if (failing) note = '⚠️ With no overflow strategy the API returns an error, and your user sees a broken chat. You must decide what to drop.';
+  else if (p.dropped && !p.summarized) note = `The oldest <b>${p.dropped}</b> turn(s) were silently dropped. The model now has <b>no idea</b> they happened: ask it "what did I say first?" and it will guess. That is the price of a sliding window.`;
+  else if (p.summarized) note = `${p.dropped} old turns were replaced by a ~${SUMMARY_TOKENS}-token summary. Their gist is kept and their details are lost, and producing the summary costs an extra LLM call.`;
+  else if (turns === 0) note = 'Press <b>+1 turn</b>. Each turn re-sends everything before it.';
+  else note = 'Everything fits. But look at the chart: every request still re-sends the full history. A large window doesn\'t make long context free, or even good, because quality tends to drop as the window fills ("lost in the middle").';
+  $('note').innerHTML = note;
+  drawChart(c);
+}
+
+function drawChart(c) {
+  const W = 640, H = 220, L = 50, B = 26, T = 10;
+  const n = history.length;
+  if (!n) { $('chart').innerHTML = `<text x="${W / 2}" y="${H / 2}" text-anchor="middle">add turns to see billed input grow</text>`; $('costs').innerHTML = ''; return; }
+  const maxY = Math.max(...history.map((h) => h.input), 1);
+  const x = (i) => L + (n === 1 ? 0 : (i / (n - 1)) * (W - L - 10));
+  const y = (v) => H - B - (v / maxY) * (H - B - T);
+  const line = (key) => history.map((h, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(h[key]).toFixed(1)}`).join(' ');
+  $('chart').innerHTML = `
+    <line class="axis" x1="${L}" y1="${H - B}" x2="${W - 10}" y2="${H - B}"/><line class="axis" x1="${L}" y1="${T}" x2="${L}" y2="${H - B}"/>
+    <text x="${L - 6}" y="${T + 8}" text-anchor="end">${fmt(maxY)}</text><text x="${L - 6}" y="${H - B}" text-anchor="end">0</text>
+    <text x="${W - 10}" y="${H - 6}" text-anchor="end">turn ${n}</text><text x="${L}" y="${H - 6}">turn 1</text>
+    <path d="${line('input')}" fill="none" stroke="var(--accent)" stroke-width="2.5"/>
+    <path d="${line('effective')}" fill="none" stroke="var(--c-out)" stroke-width="2" stroke-dasharray="5 4"/>`;
+  const sum = history.reduce((s, h) => s + h.input, 0);
+  const sumEff = history.reduce((s, h) => s + h.effective, 0);
+  const conversation = turns * c.per;
+  $('costs').innerHTML = `<span class="stat">conversation content <b>${fmt(conversation)}</b> tokens</span><span class="stat">input billed so far <b>${fmt(sum)}</b> (${(sum / Math.max(1, conversation)).toFixed(1)}×)</span><span class="stat">$ <b>${((sum * c.price) / 1e6).toFixed(4)}</b> for this one chat</span><span class="stat">with caching ≈ $ <b>${((sumEff * c.price) / 1e6).toFixed(4)}</b></span>`;
+}
+
+function addTurns(k) {
+  const c = cfg();
+  for (let i = 0; i < k; i++) {
+    turns++;
+    const p = plan(c, turns);
+    const prev = history.at(-1);
+    // Illustrative caching: the prefix identical to the previous request is billed at 10%.
+    const reusable = prev && !p.dropped ? Math.min(prev.input, p.input - p.newMsg) : (prev ? p.fixed : 0);
+    history.push({ input: p.input, effective: p.input - reusable * 0.9 });
+  }
+  render();
+}
+
+$('add1').onclick = () => addTurns(1);
+$('add10').onclick = () => addTurns(10);
+$('reset').onclick = () => { turns = 0; history = []; render(); };
+document.querySelectorAll('input, select').forEach((el) => el.addEventListener('input', () => { history = []; const t = turns; turns = 0; addTurns(t); }));
+render();
+</script>
+</body>
+</html>
