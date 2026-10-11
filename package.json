@@ -9,7 +9,10 @@
   "scripts": {
     "typecheck": "tsc --noEmit -p .",
     "verify": "tsx scripts/verify.ts",
-    "verify:p1": "tsx scripts/verify.ts phase-01"
+    "verify:live": "tsx scripts/verify.ts --live",
+    "verify:p1": "tsx scripts/verify.ts phase-01",
+    "verify:p2": "tsx scripts/verify.ts phase-02",
+    "verify:p2:live": "tsx scripts/verify.ts phase-02 --live"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",

@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LLM Cost Calculator</title>
+<style>
+  :root { --bg: #f7f7f5; --card: #ffffff; --ink: #1d1d1b; --muted: #6b6b66; --line: #e3e2dc; --accent: #3b5bdb; --accent-soft: #e7ecff; --warn: #c2410c; --good: #15803d;
+    --c-in: #3b82f6; --c-cr: #93c5fd; --c-cw: #6366f1; --c-out: #f59e0b; --c-rs: #ef4444; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #151514; --card: #1f1f1d; --ink: #ececea; --muted: #a3a39c; --line: #34342f; --accent: #8da2fb; --accent-soft: #262b45; --warn: #fb923c; --good: #4ade80; } }
+  :root[data-theme="dark"] { --bg: #151514; --card: #1f1f1d; --ink: #ececea; --muted: #a3a39c; --line: #34342f; --accent: #8da2fb; --accent-soft: #262b45; --warn: #fb923c; --good: #4ade80; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1200px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 1.6rem; margin: 0 0 4px; } h2 { font-size: 1.05rem; margin: 0 0 8px; }
+  p.lead { color: var(--muted); margin: 0 0 16px; max-width: 85ch; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-bottom: 16px; min-width: 0; }
+  .layout { display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: 16px; }
+  @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+  label.ctl { display: block; font-size: 13.5px; margin: 9px 0 0; }
+  label.ctl b { float: right; font-variant-numeric: tabular-nums; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  select, button { font: inherit; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--ink); }
+  button { cursor: pointer; font-size: 13px; } button:hover { border-color: var(--accent); }
+  .group { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin-top: 14px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  th, td { text-align: left; padding: 6px; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+  td.num, th.num { text-align: right; }
+  tr.sel { background: var(--accent-soft); }
+  tr { cursor: pointer; }
+  .stack { display: flex; height: 26px; border-radius: 6px; overflow: hidden; background: var(--bg); }
+  .stack div { height: 100%; }
+  .legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: 12.5px; margin-top: 6px; }
+  .legend span::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 2px; background: var(--c); margin-right: 5px; }
+  .big { font-size: 2rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .tips div { padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+  .row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>What will this feature cost per month?</h1>
+  <p class="lead">Describe one request: its stable prefix (instructions, tools, documents), the variable part (history, message, images) and its output, including hidden <b>reasoning</b> tokens. Set traffic, cache hit rate and batch share. Prices are per 1M tokens, verified 2026-10-11 against the official pricing pages. Click a model row to see its breakdown.</p>
+  <div class="layout">
+    <section class="card">
+      <div class="row">
+        <button data-p="support">Support chat</button><button data-p="extract">Doc extraction</button><button data-p="agent">Agent w/ tools</button><button data-p="rag">RAG Q&amp;A</button>
+      </div>
+      <div class="group">Traffic</div>
+      <label class="ctl">Requests / day <b id="reqV"></b></label><input type="range" id="req" min="0" max="5" step="0.05" value="4">
+      <div class="group">Stable prefix (cacheable)</div>
+      <label class="ctl">Instructions <b id="sysV"></b></label><input type="range" id="sys" min="0" max="8000" step="100" value="1500">
+      <label class="ctl">Tool schemas <b id="toolsV"></b></label><input type="range" id="tools" min="0" max="10000" step="100" value="1200">
+      <label class="ctl">Static docs / few-shot <b id="docsV"></b></label><input type="range" id="docs" min="0" max="50000" step="500" value="0">
+      <div class="group">Variable part</div>
+      <label class="ctl">History + retrieved context <b id="histV"></b></label><input type="range" id="hist" min="0" max="40000" step="250" value="3000">
+      <label class="ctl">User message <b id="msgV"></b></label><input type="range" id="msg" min="0" max="4000" step="50" value="150">
+      <label class="ctl">Images per request (≈1,075 tokens each, measured) <b id="imgV"></b></label><input type="range" id="img" min="0" max="10" step="1" value="0">
+      <div class="group">Output</div>
+      <label class="ctl">Visible output <b id="outV"></b></label><input type="range" id="out" min="0" max="4000" step="25" value="250">
+      <label class="ctl">Hidden reasoning <b id="rsV"></b></label><input type="range" id="rs" min="0" max="8000" step="50" value="0">
+      <label class="ctl">Model calls per request (tool loops) <b id="callsV"></b></label><input type="range" id="calls" min="1" max="8" step="1" value="1">
+      <div class="group">Optimisations</div>
+      <label class="ctl">Cache hit rate on the stable prefix <b id="hitV"></b></label><input type="range" id="hit" min="0" max="100" step="5" value="0">
+      <label class="ctl">Share of traffic via Batch API (−50%) <b id="batchV"></b></label><input type="range" id="batch" min="0" max="100" step="5" value="0">
+    </section>
+    <div>
+      <section class="card">
+        <h2>Monthly cost by model</h2>
+        <table><thead><tr><th>model</th><th class="num">in / out per 1M</th><th class="num">per request</th><th class="num">per month</th></tr></thead><tbody id="tbody"></tbody></table>
+      </section>
+      <section class="card">
+        <h2 id="selTitle"></h2>
+        <div class="big" id="selTotal"></div>
+        <div class="stack" id="stack"></div>
+        <div class="legend"><span style="--c:var(--c-in)">fresh input</span><span style="--c:var(--c-cr)">cache reads</span><span style="--c:var(--c-cw)">cache writes</span><span style="--c:var(--c-out)">visible output</span><span style="--c:var(--c-rs)">reasoning</span></div>
+        <div class="tips" id="tips" style="margin-top:12px"></div>
+      </section>
+    </div>
+  </div>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+// Same table as shared/pricing.ts (USD / 1M tokens). cacheWrite: Anthropic 5-min write; others charge base input.
+const MODELS = [
+  { id: 'claude-opus-5-5', input: 4, output: 20, cacheRead: 0.2, cacheWrite: 5 },
+  { id: 'claude-sonnet-5-5', input: 2, output: 10, cacheRead: 0.1, cacheWrite: 2.5 },
+  { id: 'claude-haiku-5-5', input: 0.1, output: 0.5, cacheRead: 0.01, cacheWrite: 0.125, note: '≤100k-token prompts' },
+  { id: 'gpt-6-astra', input: 10, output: 50, cacheRead: 1 },
+  { id: 'gpt-6.1-sol', input: 2, output: 10, cacheRead: 0.1 },
+  { id: 'gpt-6-luna', input: 0.1, output: 0.5, cacheRead: 0.01 },
+  { id: 'gemini-3.8-flash', input: 0.75, output: 3.75, cacheRead: 0.075, note: 'doubles 2027-01-01' },
+  { id: 'gemini-3.5-flash-lite', input: 0.3, output: 2.5, cacheRead: 0.03 },
+];
+let selected = 'claude-sonnet-5-5';
+const PRESETS = {
+  support: { req: 4, sys: 1500, tools: 1200, docs: 0, hist: 3000, msg: 150, img: 0, out: 250, rs: 0, calls: 1, hit: 0, batch: 0 },
+  extract: { req: 3.7, sys: 800, tools: 0, docs: 0, hist: 0, msg: 6000, img: 2, out: 400, rs: 0, calls: 1, hit: 0, batch: 80 },
+  agent: { req: 3.3, sys: 2500, tools: 6000, docs: 0, hist: 4000, msg: 200, img: 0, out: 300, rs: 1500, calls: 5, hit: 60, batch: 0 },
+  rag: { req: 4.3, sys: 1000, tools: 0, docs: 0, hist: 6000, msg: 100, img: 0, out: 300, rs: 0, calls: 1, hit: 0, batch: 0 },
+};
+const fmt = (n) => (n >= 1e6 ? (n / 1e6).toFixed(2) + 'M' : n >= 1e3 ? (n / 1e3).toFixed(1) + 'K' : String(Math.round(n)));
+const usd = (n) => (n >= 1000 ? '$' + Math.round(n).toLocaleString() : n >= 1 ? '$' + n.toFixed(2) : '$' + n.toFixed(n >= 0.01 ? 3 : 5));
+const v = (id) => +$(id).value;
+
+function compute(m) {
+  const reqDay = Math.round(10 ** v('req'));
+  const prefix = v('sys') + v('tools') + v('docs');
+  const variable = v('hist') + v('msg') + v('img') * 1075;
+  const calls = v('calls'), hit = v('hit') / 100, batchShare = v('batch') / 100;
+  // In a tool loop, each extra call re-sends everything plus ~300 tokens of tool calls/results per previous step.
+  let fresh = 0, cr = 0, cw = 0;
+  for (let c = 0; c < calls; c++) {
+    const growth = c * 300;
+    cr += prefix * hit;
+    const miss = prefix * (1 - hit);
+    if (m.cacheWrite && hit > 0) cw += miss; else fresh += miss; // with explicit caching, misses become cache writes
+    fresh += variable + growth;
+  }
+  const outVis = v('out') * calls, rs = v('rs') * calls;
+  const per = {
+    in: (fresh * m.input) / 1e6, cr: (cr * (m.cacheRead ?? m.input)) / 1e6, cw: (cw * (m.cacheWrite ?? m.input)) / 1e6,
+    out: (outVis * m.output) / 1e6, rs: (rs * m.output) / 1e6,
+  };
+  const perReq = Object.values(per).reduce((a, b) => a + b, 0);
+  const batchFactor = 1 - batchShare * 0.5;
+  return { reqDay, per, perReq: perReq * batchFactor, month: perReq * batchFactor * reqDay * 30, tokens: { fresh, cr, cw, outVis, rs } };
+}
+
+function render() {
+  const labels = { req: () => Math.round(10 ** v('req')).toLocaleString(), hit: () => v('hit') + '%', batch: () => v('batch') + '%', calls: () => v('calls'), img: () => v('img') };
+  for (const id of ['req', 'sys', 'tools', 'docs', 'hist', 'msg', 'img', 'out', 'rs', 'calls', 'hit', 'batch']) $(id + 'V').textContent = labels[id] ? labels[id]() : fmt(v(id));
+  const rows = MODELS.map((m) => ({ m, r: compute(m) })).sort((a, b) => a.r.month - b.r.month);
+  $('tbody').innerHTML = rows.map(({ m, r }) => `<tr class="${m.id === selected ? 'sel' : ''}" data-id="${m.id}"><td>${m.id}${m.note ? ` <span class="muted">(${m.note})</span>` : ''}</td><td class="num">$${m.input} / $${m.output}</td><td class="num">${usd(r.perReq)}</td><td class="num"><b>${usd(r.month)}</b></td></tr>`).join('');
+  const sel = rows.find((x) => x.m.id === selected);
+  const r = sel.r, total = Object.values(r.per).reduce((a, b) => a + b, 0) || 1;
+  $('selTitle').textContent = `${selected}: where the money goes (${r.reqDay.toLocaleString()} requests/day)`;
+  $('selTotal').textContent = usd(r.month) + ' / month';
+  $('stack').innerHTML = [['in', 'var(--c-in)'], ['cr', 'var(--c-cr)'], ['cw', 'var(--c-cw)'], ['out', 'var(--c-out)'], ['rs', 'var(--c-rs)']].map(([k, c]) => `<div style="width:${(r.per[k] / total) * 100}%;background:${c}" title="${k}: ${((r.per[k] / total) * 100).toFixed(0)}%"></div>`).join('');
+  const cheapest = rows[0], priciest = rows.at(-1);
+  const tips = [];
+  tips.push(`Model choice: <b>${cheapest.m.id}</b> at ${usd(cheapest.r.month)} vs <b>${priciest.m.id}</b> at ${usd(priciest.r.month)}, a <b>${Math.round(priciest.r.month / Math.max(cheapest.r.month, 1e-9))}×</b> spread. Route easy traffic to cheap models.`);
+  if (r.per.rs / total > 0.3) tips.push(`Reasoning is <b>${Math.round((r.per.rs / total) * 100)}%</b> of the bill. Use <code>reasoning: 'low'</code> or <code>'none'</code> where quality allows (Lab 07: 11× cost difference for the same answer).`);
+  const prefix = v('sys') + v('tools') + v('docs');
+  if (v('hit') < 50 && prefix > 2000) tips.push(`${fmt(prefix)} tokens of stable prefix with only ${v('hit')}% cache hits. Order the prompt stable-first and use explicit caching where available.`);
+  if (v('calls') > 1) tips.push(`${v('calls')} model calls per request: each one resends the prompt. Fewer, better tools and a step cap cut this linearly.`);
+  if (v('img') > 0) tips.push(`${v('img')} image(s) ≈ ${fmt(v('img') * 1075)} tokens per call. Downscale, crop, or extract text once.`);
+  if (v('hist') > 8000) tips.push(`${fmt(v('hist'))} tokens of history/context per call: summarise, truncate (Phase 1) or retrieve fewer chunks (Phase 3).`);
+  if (v('batch') === 0) tips.push('Anything that can wait minutes to hours (nightly enrichment, evals, backfills) can go through the Batch API at 50% off.');
+  $('tips').innerHTML = tips.map((t) => `<div>💡 ${t}</div>`).join('');
+}
+$('tbody').onclick = (e) => { const id = e.target.closest('tr')?.dataset.id; if (id) { selected = id; render(); } };
+document.querySelectorAll('input').forEach((i) => i.addEventListener('input', render));
+document.querySelectorAll('[data-p]').forEach((b) => (b.onclick = () => { for (const [k, val] of Object.entries(PRESETS[b.dataset.p])) $(k).value = val; render(); }));
+render();
+</script>
+</body>
+</html>

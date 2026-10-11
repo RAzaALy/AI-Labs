@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rate Limits and Retries</title>
+<style>
+  :root { --bg: #f7f7f5; --card: #ffffff; --ink: #1d1d1b; --muted: #6b6b66; --line: #e3e2dc; --accent: #3b5bdb; --accent-soft: #e7ecff; --warn: #c2410c; --ok: #16a34a; --rej: #dc2626; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #151514; --card: #1f1f1d; --ink: #ececea; --muted: #a3a39c; --line: #34342f; --accent: #8da2fb; --accent-soft: #262b45; --warn: #fb923c; --ok: #4ade80; --rej: #f87171; } }
+  :root[data-theme="dark"] { --bg: #151514; --card: #1f1f1d; --ink: #ececea; --muted: #a3a39c; --line: #34342f; --accent: #8da2fb; --accent-soft: #262b45; --warn: #fb923c; --ok: #4ade80; --rej: #f87171; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1200px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 1.6rem; margin: 0 0 4px; } h2 { font-size: 1.05rem; margin: 0 0 8px; }
+  p.lead { color: var(--muted); margin: 0 0 16px; max-width: 85ch; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-bottom: 16px; min-width: 0; }
+  .layout { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 16px; }
+  @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+  label.ctl { display: block; font-size: 13.5px; margin: 10px 0 0; }
+  label.ctl b { float: right; font-variant-numeric: tabular-nums; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  select, button { font: inherit; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--ink); width: 100%; }
+  button { cursor: pointer; margin-top: 10px; } button:hover { border-color: var(--accent); }
+  svg { width: 100%; height: auto; display: block; }
+  svg text { font: 11px system-ui, sans-serif; fill: var(--muted); }
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  th, td { text-align: right; padding: 6px; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+  th:first-child, td:first-child { text-align: left; }
+  tr.sel { background: var(--accent-soft); font-weight: 600; }
+  .legend { display: flex; gap: 14px; font-size: 12.5px; margin-top: 6px; }
+  .legend span::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 2px; background: var(--c); margin-right: 5px; }
+  .callout { border-left: 3px solid var(--warn); padding: 6px 12px; background: var(--bg); border-radius: 0 8px 8px 0; margin-top: 10px; font-size: 14px; }
+  .muted { color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Rate limits, retries and the thundering herd</h1>
+  <p class="lead">A burst of clients hits an LLM API that allows <b>R requests/second</b> (a token bucket). Rejected requests get <b>429</b>. How each client retries decides whether the system recovers smoothly or keeps hammering the API in synchronized waves. Same clients and limit, five strategies. Every run is deterministic, and you can reroll the seed.</p>
+  <div class="layout">
+    <section class="card">
+      <label class="ctl">Strategy</label>
+      <select id="strategy">
+        <option value="immediate">Retry immediately</option>
+        <option value="fixed">Fixed 1 s backoff</option>
+        <option value="exp">Exponential backoff (no jitter)</option>
+        <option value="jitter" selected>Exponential + full jitter</option>
+        <option value="retryafter">Jitter + honour Retry-After</option>
+      </select>
+      <label class="ctl">Clients in the burst <b id="clientsV"></b></label><input type="range" id="clients" min="10" max="300" step="10" value="120">
+      <label class="ctl">Requests per client <b id="perV"></b></label><input type="range" id="per" min="1" max="10" step="1" value="1">
+      <label class="ctl">Rate limit R (req/s) <b id="rateV"></b></label><input type="range" id="rate" min="5" max="100" step="5" value="20">
+      <label class="ctl">Max retries per request <b id="maxV"></b></label><input type="range" id="max" min="1" max="12" step="1" value="8">
+      <button id="reroll">🎲 Reroll seed</button>
+      <p class="muted">All clients arrive within 100 ms (a burst: a deploy, a cron, a viral moment). Bucket holds R/2 tokens. Base backoff 250 ms, cap 16 s. 50 ms ticks over 60 s.</p>
+    </section>
+    <div>
+      <section class="card">
+        <h2 id="chartTitle"></h2>
+        <svg id="chart" viewBox="0 0 800 260" role="img" aria-label="Requests per 250ms"></svg>
+        <div class="legend"><span style="--c:var(--ok)">accepted</span><span style="--c:var(--rej)">429 rejected</span><span style="--c:var(--accent)">limit R</span></div>
+        <div class="callout" id="note"></div>
+      </section>
+      <section class="card">
+        <h2>All strategies, same burst</h2>
+        <table><thead><tr><th>strategy</th><th>done</th><th>gave up</th><th>429s (wasted calls)</th><th>finished at</th></tr></thead><tbody id="tbody"></tbody></table>
+      </section>
+    </div>
+  </div>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+let seed = 7;
+const NAMES = { immediate: 'Retry immediately', fixed: 'Fixed 1 s', exp: 'Exponential', jitter: 'Exp + full jitter', retryafter: 'Jitter + Retry-After' };
+function rng(s) { return () => { s = (s + 0x6d2b79f5) >>> 0; let t = s; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+
+function simulate(strategy) {
+  const rand = rng(seed), clients = +$('clients').value, per = +$('per').value, R = +$('rate').value, maxR = +$('max').value;
+  const TICK = 50, END = 60000, BASE = 250, CAP = 16000;
+  let tokens = R / 2, lastRefill = 0;
+  // Each client: next send time, attempt count, jobs left
+  const cs = Array.from({ length: clients }, () => ({ next: rand() * 100, attempt: 0, left: per }));
+  const buckets = Array.from({ length: END / 250 + 1 }, () => ({ ok: 0, rej: 0 }));
+  let done = 0, gaveUp = 0, rejected = 0, finishedAt = null;
+  for (let t = 0; t < END; t += TICK) {
+    tokens = Math.min(R / 2, tokens + ((t - lastRefill) / 1000) * R); lastRefill = t;
+    for (const c of cs) {
+      if (c.left === 0 || c.next > t) continue;
+      const b = buckets[Math.floor(t / 250)];
+      if (tokens >= 1) {
+        tokens -= 1; b.ok++; done++; c.left--; c.attempt = 0;
+        c.next = t + 100 + rand() * 200; // think time before the client's next request
+      } else {
+        b.rej++; rejected++;
+        if (c.attempt >= maxR) { gaveUp++; c.left--; c.attempt = 0; c.next = t + 100; continue; }
+        const n = c.attempt++;
+        const retryAfter = ((1 - tokens) / R) * 1000; // server knows when the next slot frees up
+        const exp = Math.min(CAP, BASE * 2 ** n);
+        c.next = t + ({
+          immediate: TICK,
+          fixed: 1000,
+          exp,
+          jitter: rand() * exp,
+          retryafter: Math.max(retryAfter, rand() * exp),
+        })[strategy];
+      }
+    }
+    if (finishedAt === null && cs.every((c) => c.left === 0)) finishedAt = t;
+  }
+  return { buckets, done, gaveUp, rejected, finishedAt, R };
+}
+
+function render() {
+  for (const id of ['clients', 'per', 'rate', 'max']) $(id + 'V').textContent = $(id).value;
+  const strategy = $('strategy').value, res = simulate(strategy);
+  const W = 800, H = 260, L = 34, B = 22;
+  const visible = res.buckets.slice(0, Math.max(24, Math.ceil(((res.finishedAt ?? 60000) + 2000) / 250)));
+  const maxY = Math.max(...visible.map((b) => b.ok + b.rej), (res.R / 4) * 1.5, 1);
+  const bw = (W - L - 6) / visible.length;
+  const y = (v) => H - B - (v / maxY) * (H - B - 10);
+  let svg = `<line x1="${L}" y1="${H - B}" x2="${W}" y2="${H - B}" stroke="var(--line)"/>`;
+  visible.forEach((b, i) => {
+    const x = L + i * bw;
+    svg += `<rect x="${x}" y="${y(b.ok)}" width="${Math.max(1, bw - 1)}" height="${H - B - y(b.ok)}" fill="var(--ok)"/>`;
+    svg += `<rect x="${x}" y="${y(b.ok + b.rej)}" width="${Math.max(1, bw - 1)}" height="${y(b.ok) - y(b.ok + b.rej)}" fill="var(--rej)"/>`;
+  });
+  svg += `<line x1="${L}" x2="${W}" y1="${y(res.R / 4)}" y2="${y(res.R / 4)}" stroke="var(--accent)" stroke-dasharray="5 4"/>`;
+  svg += `<text x="4" y="${y(maxY) + 10}">${Math.round(maxY)}</text><text x="4" y="${H - B}">0</text>`;
+  for (let s = 0; s <= visible.length / 4; s += Math.ceil(visible.length / 40)) svg += `<text x="${L + s * 4 * bw}" y="${H - 6}">${s}s</text>`;
+  $('chart').innerHTML = svg;
+  $('chartTitle').textContent = `${NAMES[strategy]}: requests per 250 ms`;
+
+  $('tbody').innerHTML = Object.keys(NAMES).map((s) => {
+    const r = s === strategy ? res : simulate(s);
+    return `<tr class="${s === strategy ? 'sel' : ''}"><td>${NAMES[s]}</td><td>${r.done}</td><td>${r.gaveUp}</td><td>${r.rejected.toLocaleString()}</td><td>${r.finishedAt === null ? '> 60 s (unfinished)' : (r.finishedAt / 1000).toFixed(1) + ' s'}</td></tr>`;
+  }).join('');
+
+  $('note').innerHTML = {
+    immediate: 'Every rejected client retries on the next tick, so the API sees a <b>wall of 429s</b>. Each retry is a wasted request (and counts against your RPM). Clients give up fast, so you lose work.',
+    fixed: 'Everyone who failed together retries together, exactly 1 s later, and fails together again. These are the <b>synchronized waves of a thundering herd</b>.',
+    exp: 'Clients that failed in the same tick back off by the <b>same</b> amount, so they collide again, every time, at 0.25 s, 0.5 s, 1 s, 2 s… (look at the isolated spikes with long idle gaps between them). Capacity sits unused while everyone waits: draining takes several times longer than with jitter, and many requests exhaust their retries.',
+    jitter: '<b>Full jitter</b> (a random delay in [0, base·2ⁿ]) spreads the retries out. Load hugs the limit line, every request completes, and it wastes the fewest calls. This is what Lab 01 implements.',
+    retryafter: 'When the server tells you when to come back (<code>Retry-After</code>), honour it as a <b>floor</b> and keep the jitter. Real APIs send it on 429/503.',
+  }[strategy];
+}
+document.querySelectorAll('input, select').forEach((el) => el.addEventListener('input', render));
+$('reroll').onclick = () => { seed = (seed * 48271) % 2147483647; render(); };
+render();
+</script>
+</body>
+</html>

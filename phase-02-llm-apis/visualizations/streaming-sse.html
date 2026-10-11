@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Streaming over SSE</title>
+<style>
+  :root { --bg: #f7f7f5; --card: #ffffff; --ink: #1d1d1b; --muted: #6b6b66; --line: #e3e2dc; --accent: #3b5bdb; --accent-soft: #e7ecff; --warn: #c2410c; --good: #15803d; --bad: #dc2626; --code: #f1f0ec; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #151514; --card: #1f1f1d; --ink: #ececea; --muted: #a3a39c; --line: #34342f; --accent: #8da2fb; --accent-soft: #262b45; --warn: #fb923c; --good: #4ade80; --bad: #f87171; --code: #181816; } }
+  :root[data-theme="dark"] { --bg: #151514; --card: #1f1f1d; --ink: #ececea; --muted: #a3a39c; --line: #34342f; --accent: #8da2fb; --accent-soft: #262b45; --warn: #fb923c; --good: #4ade80; --bad: #f87171; --code: #181816; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1200px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 1.6rem; margin: 0 0 4px; } h2 { font-size: 1.05rem; margin: 0 0 8px; }
+  p.lead { color: var(--muted); margin: 0 0 16px; max-width: 85ch; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-bottom: 16px; min-width: 0; }
+  .grid { display: grid; grid-template-columns: 300px minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
+  @media (max-width: 1000px) { .grid { grid-template-columns: 1fr; } }
+  label.ctl { display: block; font-size: 14px; margin: 10px 0 0; }
+  label.ctl b { float: right; font-variant-numeric: tabular-nums; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  select, button { font: inherit; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--ink); }
+  button { cursor: pointer; } button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  button.danger { background: var(--bad); color: #fff; border-color: var(--bad); }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 10px 0; }
+  pre { margin: 0; background: var(--code); border-radius: 8px; padding: 10px; font: 12px/1.45 ui-monospace, Menlo, Consolas, monospace; height: 330px; overflow: auto; white-space: pre-wrap; word-break: break-all; }
+  .buf { background: rgba(250, 204, 21, .35); }
+  .ui { font-size: 16px; line-height: 1.6; min-height: 150px; padding: 12px; background: var(--bg); border-radius: 8px; }
+  .cursor { display: inline-block; width: 8px; height: 1em; background: var(--accent); vertical-align: text-bottom; animation: blink 1s steps(2) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .err { color: var(--bad); font-weight: 600; }
+  .stat { display: inline-block; padding: 4px 10px; border-radius: 999px; background: var(--accent-soft); margin: 2px 4px 2px 0; font-size: 13px; }
+  .timeline { position: relative; height: 54px; background: var(--bg); border-radius: 8px; margin-top: 10px; overflow: hidden; }
+  .timeline .seg { position: absolute; top: 0; bottom: 0; }
+  .timeline span.lbl { position: absolute; font-size: 11px; top: 4px; color: var(--muted); }
+  .muted { color: var(--muted); font-size: 13px; }
+  .callout { border-left: 3px solid var(--warn); padding: 6px 12px; background: var(--bg); border-radius: 0 8px 8px 0; margin-top: 10px; font-size: 14px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Streaming tokens over Server-Sent Events</h1>
+  <p class="lead">A simulated stream, using the timing measured live in Lab 02 (Gemini free tier: TTFT ≈ 1 s, then ≈ 200 tokens/s). Watch the <b>raw bytes</b> arrive in network packets, the <b>parser</b> buffer half-lines (yellow), and the <b>UI</b> render deltas. Then break it: abort, buffer at a proxy, or fail mid-stream.</p>
+
+  <div class="grid">
+    <section class="card">
+      <h2>Controls</h2>
+      <label class="ctl">Wire format</label>
+      <select id="fmt" style="width:100%"><option value="gemini">Gemini native (alt=sse)</option><option value="openai">OpenAI-compatible</option><option value="ui">AI SDK UI message stream</option></select>
+      <label class="ctl" for="ttft">TTFT (queue + prefill) <b id="ttftV"></b></label><input type="range" id="ttft" min="100" max="4000" step="100" value="1000">
+      <label class="ctl" for="tps">Decode speed <b id="tpsV"></b></label><input type="range" id="tps" min="5" max="300" step="5" value="40">
+      <label class="ctl" for="pkt">Network packet size <b id="pktV"></b></label><input type="range" id="pkt" min="8" max="400" step="8" value="48">
+      <label class="ctl"><input type="checkbox" id="proxy"> proxy buffering ON (nginx default)</label>
+      <label class="ctl"><input type="checkbox" id="fail"> provider error mid-stream</label>
+      <div class="row">
+        <button class="primary" id="start">▶ Send request</button>
+        <button class="danger" id="stop" disabled>■ Stop</button>
+      </div>
+      <div id="stats"></div>
+      <p class="muted">The decode speed is slowed down by default so you can watch it. Real APIs reach ~200 tok/s.</p>
+    </section>
+    <section class="card">
+      <h2>1 · Raw bytes on the wire</h2>
+      <pre id="wire"></pre>
+    </section>
+    <section class="card">
+      <h2>2 · Parsed events → 3 · what the user sees</h2>
+      <pre id="events" style="height:160px"></pre>
+      <div class="ui" id="ui" style="margin-top:10px"></div>
+    </section>
+  </div>
+  <section class="card">
+    <h2>Timeline</h2>
+    <div class="timeline" id="timeline"></div>
+    <div class="callout" id="note">Press <b>Send request</b>.</div>
+  </section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const ANSWER = 'Streaming sends each token as soon as the model produces it, so the user starts reading after the first token instead of waiting for the whole answer. It also lets them stop a bad answer early, which saves tokens and money.';
+const TOKENS = ANSWER.match(/\S+\s*/g);
+let timer = null, state = null;
+
+function frame(fmt, i, delta, cum, last, finish) {
+  if (fmt === 'gemini') return `data: ${JSON.stringify({ candidates: [{ content: { role: 'model', parts: [{ text: delta }] }, ...(last ? { finishReason: finish } : {}) }], usageMetadata: { promptTokenCount: 42, candidatesTokenCount: cum } })}\r\n\r\n`;
+  if (fmt === 'openai') return `data: ${JSON.stringify({ choices: [{ index: 0, delta: { content: delta }, finish_reason: null }] })}\n\n` + (last ? `data: ${JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: finish === 'STOP' ? 'stop' : finish }], usage: { prompt_tokens: 42, completion_tokens: cum } })}\n\ndata: [DONE]\n\n` : '');
+  return (i === 0 ? `data: {"type":"start","messageId":"msg_1"}\n\ndata: {"type":"text-start","id":"t1"}\n\n` : '') + `data: ${JSON.stringify({ type: 'text-delta', id: 't1', delta })}\n\n` + (last ? `data: {"type":"text-end","id":"t1"}\n\ndata: {"type":"finish","messageMetadata":{"inputTokens":42,"outputTokens":${cum}}}\n\ndata: [DONE]\n\n` : '');
+}
+
+function start() {
+  stop(true);
+  const fmt = $('fmt').value, ttft = +$('ttft').value, tps = +$('tps').value, pkt = +$('pkt').value;
+  const failAt = $('fail').checked ? Math.floor(TOKENS.length * 0.55) : -1;
+  // Build the full byte stream with the time each byte is produced.
+  let bytes = '', times = [];
+  const push = (s, t) => { bytes += s; for (let k = 0; k < s.length; k++) times.push(t); };
+  let cum = 0, t = ttft;
+  push(`HTTP/1.1 200 OK\ncontent-type: text/event-stream\n\n`, ttft * 0.98);
+  for (let i = 0; i < TOKENS.length; i++) {
+    if (i === failAt) { push(fmt === 'gemini' ? `data: {"error":{"code":503,"message":"The model is overloaded.","status":"UNAVAILABLE"}}\r\n\r\n` : fmt === 'openai' ? `data: {"error":{"message":"overloaded","type":"server_error"}}\n\n` : `data: {"type":"error","errorText":"The model is overloaded."}\n\n`, t); break; }
+    cum++;
+    push(frame(fmt, i, TOKENS[i], cum, i === TOKENS.length - 1, 'STOP'), t);
+    t += 1000 / tps;
+  }
+  const endT = t;
+  state = { fmt, bytes, times, pos: 0, buffer: '', text: '', events: [], startedAt: performance.now(), firstTokenAt: null, tokens: 0, ttft, endT, proxy: $('proxy').checked, aborted: false, error: null, done: false, pkt };
+  $('wire').textContent = ''; $('events').textContent = ''; $('ui').innerHTML = '<span class="cursor"></span>';
+  $('start').disabled = true; $('stop').disabled = false;
+  timer = setInterval(tick, 30);
+}
+
+function tick() {
+  const s = state, now = performance.now() - s.startedAt;
+  // Bytes available on the network right now (packetised); with proxy buffering, nothing until the end.
+  let avail = s.times.findIndex((t) => t > now); if (avail === -1) avail = s.bytes.length;
+  if (s.proxy && avail < s.bytes.length) avail = 0;
+  while (s.pos < avail) {
+    const end = Math.min(avail, s.pos + s.pkt);
+    const chunk = s.bytes.slice(s.pos, end);
+    s.pos = end;
+    $('wire').textContent += chunk;
+    s.buffer += chunk;
+    parse();
+  }
+  // Show the not-yet-terminated part of the buffer in yellow
+  const wire = $('wire');
+  const full = esc(s.bytes.slice(0, s.pos));
+  const pending = s.buffer.length;
+  wire.innerHTML = pending ? full.slice(0, Math.max(0, full.length - esc(s.buffer).length)) + `<span class="buf">${esc(s.buffer)}</span>` : full;
+  wire.scrollTop = wire.scrollHeight;
+  renderTimeline(now);
+  if (s.pos >= s.bytes.length && !s.buffer.trim()) finish();
+}
+
+function parse() {
+  const s = state;
+  let idx;
+  while ((idx = s.buffer.search(/\r?\n\r?\n/)) !== -1) {
+    const raw = s.buffer.slice(0, idx);
+    s.buffer = s.buffer.slice(idx + (s.buffer[idx] === '\r' ? 4 : 2));
+    const data = raw.split(/\r?\n/).filter((l) => l.startsWith('data:')).map((l) => l.slice(5).trim()).join('\n');
+    if (!data) continue;
+    s.events.push(data.length > 90 ? data.slice(0, 90) + '…' : data);
+    $('events').textContent = s.events.slice(-14).join('\n');
+    $('events').scrollTop = $('events').scrollHeight;
+    if (data === '[DONE]') continue;
+    const j = JSON.parse(data);
+    const delta = s.fmt === 'gemini' ? j.candidates?.[0]?.content?.parts?.[0]?.text : s.fmt === 'openai' ? j.choices?.[0]?.delta?.content : j.type === 'text-delta' ? j.delta : null;
+    const err = j.error?.message || (j.type === 'error' ? j.errorText : null);
+    if (err) { s.error = err; }
+    if (delta) { if (!s.firstTokenAt) s.firstTokenAt = performance.now() - s.startedAt; s.text += delta; s.tokens++; }
+    $('ui').innerHTML = esc(s.text) + (s.error ? ` <span class="err">⚠ ${esc(s.error)}. Partial answer shown; HTTP status was already 200.</span>` : '<span class="cursor"></span>');
+  }
+}
+
+function renderTimeline(now) {
+  const s = state, total = Math.max(s.endT, now, 1);
+  const pct = (x) => `${(x / total) * 100}%`;
+  const first = s.firstTokenAt ?? Math.min(now, s.ttft);
+  $('timeline').innerHTML = `<div class="seg" style="left:0;width:${pct(Math.min(now, s.firstTokenAt ?? now))};background:rgba(234,88,12,.35)"></div>`
+    + (s.firstTokenAt ? `<div class="seg" style="left:${pct(s.firstTokenAt)};width:${pct(Math.max(0, now - s.firstTokenAt))};background:rgba(59,91,219,.35)"></div>` : '')
+    + `<span class="lbl" style="left:6px">waiting (TTFT)</span>` + (s.firstTokenAt ? `<span class="lbl" style="left:calc(${pct(s.firstTokenAt)} + 6px)">first token at ${Math.round(s.firstTokenAt)} ms → reading while it writes</span>` : '');
+  const tps = s.firstTokenAt && now > s.firstTokenAt ? (s.tokens / ((now - s.firstTokenAt) / 1000)).toFixed(0) : '–';
+  $('stats').innerHTML = `<span class="stat">elapsed ${Math.round(now)} ms</span><span class="stat">TTFT ${s.firstTokenAt ? Math.round(s.firstTokenAt) + ' ms' : '…'}</span><span class="stat">tokens ${s.tokens}/${TOKENS.length}</span><span class="stat">${tps} tok/s</span>`;
+}
+
+function finish() {
+  const s = state; if (s.done) return; s.done = true;
+  clearInterval(timer); timer = null;
+  $('start').disabled = false; $('stop').disabled = true;
+  if (!s.error && !s.aborted) $('ui').innerHTML = esc(s.text);
+  let note;
+  if (s.aborted) note = `<b>Aborted after ${s.tokens} tokens.</b> Your server must propagate the abort to the provider (AbortController → fetch) so generation stops. You're still billed for the tokens already generated. Without propagation, the model keeps writing (and billing) the full ${TOKENS.length} tokens for nobody.`;
+  else if (s.error) note = '<b>Error after a 200.</b> Once streaming starts, the status code has already been sent, so errors arrive <i>in the stream</i>. Your UI needs a "failed mid-answer" state with a retry button, and your server should log usage for the partial generation.';
+  else if (s.proxy) note = '<b>Proxy buffering:</b> the provider streamed, but a buffering proxy (nginx <code>proxy_buffering on</code>, compression middleware, some CDNs) held everything until the end. The user saw nothing for the full duration. Disable buffering on streaming routes (<code>X-Accel-Buffering: no</code>).';
+  else note = `Done. The user started reading at ${Math.round(s.firstTokenAt)} ms instead of waiting ${Math.round(s.endT)} ms. Notice the <span class="buf">yellow</span> fragments in the raw bytes: packets split events mid-line, so a parser must <b>buffer until a blank line</b> before parsing JSON.`;
+  $('note').innerHTML = note;
+}
+
+function stop(silent) {
+  if (!state || state.done) return;
+  if (!silent) { state.aborted = true; finish(); } else { clearInterval(timer); }
+}
+$('start').onclick = start;
+$('stop').onclick = () => stop(false);
+for (const [id, fmt] of [['ttft', (v) => v + ' ms'], ['tps', (v) => v + ' tok/s'], ['pkt', (v) => v + ' bytes']]) {
+  const upd = () => ($(id + 'V').textContent = fmt($(id).value));
+  $(id).addEventListener('input', upd); upd();
+}
+function esc(s) { return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+</script>
+</body>
+</html>

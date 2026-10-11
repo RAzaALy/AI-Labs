@@ -1,13 +1,15 @@
 // Runs every lab solution and project reference check, so you (and CI) know the curriculum code works.
-// Usage: npm run verify            (all phases)
-//        npm run verify -- phase-01 (one phase)
+// Usage: npm run verify              (all phases, MOCK model: offline, free, deterministic)
+//        npm run verify -- phase-02   (one phase)
+//        npm run verify:live          (uses the real provider from .env — spends free-tier quota)
 import { spawn } from 'node:child_process';
 import { readdir, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const filter = process.argv[2] ?? '';
+const live = process.argv.includes('--live');
+const filter = process.argv.slice(2).find((a) => !a.startsWith('--')) ?? '';
 
 async function exists(p: string) {
   return stat(p).then(() => true, () => false);
@@ -16,7 +18,8 @@ async function exists(p: string) {
 function runCheck(file: string, target: string): Promise<{ ok: boolean; ms: number; out: string }> {
   const started = Date.now();
   return new Promise((resolve) => {
-    const child = spawn('npx', ['tsx', file, target], { cwd: root });
+    const env = live ? process.env : { ...process.env, LLM_PROVIDER: 'mock' };
+    const child = spawn('npx', ['tsx', file, target], { cwd: root, env });
     let out = '';
     child.stdout.on('data', (d) => (out += d));
     child.stderr.on('data', (d) => (out += d));
@@ -38,6 +41,7 @@ for (const phase of phases) {
   if (await exists(projectCheck)) jobs.push({ name: `${phase}/project`, file: projectCheck, target: 'reference' });
 }
 
+console.log(live ? '▶ LIVE mode: using the provider configured in .env\n' : '▶ MOCK mode: no API calls (use npm run verify:live for real models)\n');
 let failed = 0;
 for (const job of jobs) {
   process.stdout.write(`… ${job.name}`);

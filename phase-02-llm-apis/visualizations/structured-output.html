@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Constrained Decoding</title>
+<style>
+  :root { --bg: #f7f7f5; --card: #ffffff; --ink: #1d1d1b; --muted: #6b6b66; --line: #e3e2dc; --accent: #3b5bdb; --accent-soft: #e7ecff; --warn: #c2410c; --good: #15803d; --bad: #dc2626; --code: #f1f0ec; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #151514; --card: #1f1f1d; --ink: #ececea; --muted: #a3a39c; --line: #34342f; --accent: #8da2fb; --accent-soft: #262b45; --warn: #fb923c; --good: #4ade80; --bad: #f87171; --code: #181816; } }
+  :root[data-theme="dark"] { --bg: #151514; --card: #1f1f1d; --ink: #ececea; --muted: #a3a39c; --line: #34342f; --accent: #8da2fb; --accent-soft: #262b45; --warn: #fb923c; --good: #4ade80; --bad: #f87171; --code: #181816; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1150px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 1.6rem; margin: 0 0 4px; } h2 { font-size: 1.05rem; margin: 0 0 8px; }
+  p.lead { color: var(--muted); margin: 0 0 16px; max-width: 85ch; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-bottom: 16px; min-width: 0; }
+  .grid { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 16px; }
+  @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+  .tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+  button { font: inherit; font-size: 14px; padding: 6px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--ink); cursor: pointer; }
+  button:hover { border-color: var(--accent); } button:disabled { opacity: .4; cursor: default; }
+  .tabs button.on, button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  pre { margin: 0; background: var(--code); border-radius: 8px; padding: 10px 12px; font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap; word-break: break-word; min-height: 90px; }
+  .out .tok { border-radius: 3px; padding: 0 1px; }
+  .out .last { background: rgba(250, 204, 21, .45); }
+  .cands { font: 13px ui-monospace, Menlo, Consolas, monospace; margin-top: 8px; }
+  .cand { display: grid; grid-template-columns: 170px 1fr 54px 110px; gap: 8px; align-items: center; height: 28px; }
+  .cand .t { white-space: pre; overflow: hidden; text-overflow: ellipsis; }
+  .cand .bar { height: 12px; background: var(--accent); border-radius: 3px; }
+  .cand.masked .t { text-decoration: line-through; color: var(--muted); }
+  .cand.masked .bar { background: var(--line); }
+  .cand.picked .t { font-weight: 700; }
+  .tag { font: 11px system-ui; padding: 1px 6px; border-radius: 999px; }
+  .tag.masked { background: var(--bad); color: #fff; } .tag.picked { background: var(--good); color: #fff; }
+  .status { margin-top: 8px; font-size: 14px; }
+  .ok { color: var(--good); font-weight: 600; } .no { color: var(--bad); font-weight: 600; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
+  .callout { border-left: 3px solid var(--warn); padding: 6px 12px; background: var(--bg); border-radius: 0 8px 8px 0; margin-top: 10px; font-size: 14px; }
+  code { font-size: 13px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Structured output: prompt-only JSON vs constrained decoding</h1>
+  <p class="lead">The same model extracts a ticket from "<i>I was charged twice for ORD-48213, refund NOW!</i>". With <b>prompt-only JSON</b> it samples freely and drifts: a chatty preamble, a label that isn't in your enum, a code fence. With <b>constrained decoding</b> the sampler <b>masks every token that would break the schema</b>, renormalises, then picks. That's Phase 1's sampling with a grammar filter applied first. (Token candidates and probabilities are illustrative.)</p>
+
+  <section class="card">
+    <h2>Schema</h2>
+    <pre style="min-height:0">{ category: "billing" | "bug" | "feature_request" | "account",
+  priority: "low" | "medium" | "high" | "urgent",
+  orderId:  string | null }</pre>
+  </section>
+
+  <div class="tabs" id="modes"></div>
+  <div class="grid">
+    <section class="card">
+      <h2>Generated so far</h2>
+      <pre class="out" id="out"></pre>
+      <h2 style="margin-top:14px">Next-token candidates <span class="muted" id="stepLbl"></span></h2>
+      <div class="cands" id="cands"></div>
+      <div class="row">
+        <button id="back">← Back</button>
+        <button id="step" class="primary">Sample next token →</button>
+        <button id="all">Run to end</button>
+        <button id="reset">Reset</button>
+      </div>
+    </section>
+    <section class="card">
+      <h2>What your code receives</h2>
+      <div class="muted">Partial object (what <code>partialOutputStream</code> yields: best-effort, <b>unvalidated</b>)</div>
+      <pre id="partial" style="min-height:60px"></pre>
+      <div class="status" id="status"></div>
+      <div class="callout" id="note"></div>
+    </section>
+  </div>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+// Each step: candidate tokens with the model's (illustrative) probabilities.
+const STEPS = [
+  [['Sure! Here', .38], ['{"', .30], ['```json\n{"', .2], ['The ticket', .12]],
+  [["'s the ticket:\n", .7], ['category', .1], ['!', .1], [' you go', .1]],
+  [['```json\n', .6], ['{"', .35], ['Category:', .05]],
+  [['{"', .9], ['[', .06], ['{ ', .04]],
+  [['category', .55], ['type', .25], ['issue', .2]],
+  [['":"', .95], ['": "', .05]],
+  [['refund', .46], ['billing', .34], ['payment', .14], ['bug', .06]],
+  [['","', .9], ['", "', .1]],
+  [['priority', .8], ['urgency', .2]],
+  [['":"', 1]],
+  [['critical', .41], ['urgent', .36], ['high', .2], ['medium', .03]],
+  [['","', .95], ['"}', .05]],
+  [['orderId', .7], ['order_id', .25], ['order', .05]],
+  [['":', 1]],
+  [['"ORD-48213"', .66], ['null', .18], ['"48213"', .12], ['48213', .04]],
+  [['}', .9], [',', .1]],
+  [['\n```', .7], ['<END>', .3]],
+  [['\nLet me know if you need anything else!', .8], ['<END>', .2]],
+  [['<END>', 1]],
+];
+
+// ---- A tiny grammar check: can `prefix` still be extended into a valid instance of the schema? ----
+const ENUMS = { category: ['billing', 'bug', 'feature_request', 'account'], priority: ['low', 'medium', 'high', 'urgent'] };
+const PARTS = [{ lit: '{"category":"' }, { enum: 'category' }, { lit: '","priority":"' }, { enum: 'priority' }, { lit: '","orderId":' }, { nullOrString: true }, { lit: '}' }];
+function viable(text, complete) {
+  // depth-first over the template; returns true if text is a prefix of (or, if complete, exactly) some valid output
+  function go(pi, pos) {
+    if (pos === text.length) return complete ? pi === PARTS.length : true;
+    if (pi === PARTS.length) return false;
+    const p = PARTS[pi], rest = text.slice(pos);
+    if (p.lit !== undefined) {
+      if (rest.length < p.lit.length) return !complete && p.lit.startsWith(rest);
+      return rest.startsWith(p.lit) && go(pi + 1, pos + p.lit.length);
+    }
+    if (p.enum) {
+      return ENUMS[p.enum].some((v) => (rest.length < v.length ? !complete && v.startsWith(rest) : rest.startsWith(v) && go(pi + 1, pos + v.length)));
+    }
+    if (p.nullOrString) {
+      if ('null'.startsWith(rest.slice(0, 4)) && rest.length < 4) return !complete;
+      if (rest.startsWith('null') && go(pi + 1, pos + 4)) return true;
+      if (rest[0] === '"') {
+        const close = rest.indexOf('"', 1);
+        if (close === -1) return !complete;
+        return go(pi + 1, pos + close + 1);
+      }
+      return false;
+    }
+  }
+  return go(0, 0);
+}
+
+let mode = 'constrained', picked = [];
+
+function candidatesAt(text, k) {
+  const list = STEPS[k] || [['<END>', 1]];
+  return list.map(([t, p]) => {
+    const next = t === '<END>' ? text : text + t;
+    const masked = mode === 'constrained' && (t === '<END>' ? !viable(text, true) : !viable(next, false));
+    return { t, p, masked };
+  });
+}
+
+function simulate(upto) {
+  let text = '', k = 0, toks = [];
+  for (let s = 0; s < upto; s++) {
+    // constrained mode: skip decision points where every candidate is masked (the template forces the text)
+    let cands = candidatesAt(text, k);
+    while (mode === 'constrained' && cands.every((c) => c.masked) && k < STEPS.length) { k++; cands = candidatesAt(text, k); }
+    const allowed = cands.filter((c) => !c.masked);
+    const best = allowed.sort((a, b) => b.p - a.p)[0];
+    if (!best || best.t === '<END>') return { text, toks, done: true, k };
+    text += best.t; toks.push(best.t); k++;
+  }
+  return { text, toks, done: false, k };
+}
+
+let steps = 0;
+function render() {
+  $('modes').innerHTML = [['prompt', 'Prompt-only JSON ("respond in JSON")'], ['constrained', 'Constrained decoding (schema)']].map(([m, l]) => `<button class="${m === mode ? 'on' : ''}" data-m="${m}">${l}</button>`).join('');
+  const sim = simulate(steps);
+  $('out').innerHTML = sim.toks.map((t, i) => `<span class="tok ${i === sim.toks.length - 1 ? 'last' : ''}">${esc(t)}</span>`).join('') || '<span class="muted">(nothing yet)</span>';
+  // Candidates for the NEXT step
+  let k = sim.k, cands = candidatesAt(sim.text, k);
+  while (mode === 'constrained' && cands.every((c) => c.masked) && k < STEPS.length) { k++; cands = candidatesAt(sim.text, k); }
+  const allowedSum = cands.filter((c) => !c.masked).reduce((s, c) => s + c.p, 0) || 1;
+  const best = cands.filter((c) => !c.masked).sort((a, b) => b.p - a.p)[0];
+  $('stepLbl').textContent = sim.done ? '(finished)' : `(step ${steps + 1})`;
+  $('cands').innerHTML = sim.done ? '<span class="muted">Generation ended.</span>' : cands.map((c) => {
+    const p = c.masked ? 0 : c.p / allowedSum;
+    return `<div class="cand ${c.masked ? 'masked' : ''} ${c === best ? 'picked' : ''}"><span class="t">${esc(JSON.stringify(c.t))}</span><span><div class="bar" style="width:${(c.masked ? c.p : p) * 100}%"></div></span><span>${(p * 100).toFixed(0)}%</span><span>${c.masked ? '<span class="tag masked">masked by schema</span>' : c === best ? '<span class="tag picked">picked</span>' : ''}</span></div>`;
+  }).join('');
+  $('step').disabled = sim.done; $('all').disabled = sim.done; $('back').disabled = steps === 0;
+
+  // What code receives
+  const partial = partialParse(sim.text);
+  $('partial').textContent = partial === undefined ? '(not parseable yet)' : JSON.stringify(partial, null, 2);
+  let status = '';
+  if (sim.done) {
+    let obj = null, err = null;
+    try { obj = JSON.parse(sim.text); } catch (e) { err = 'JSON.parse failed: ' + e.message; }
+    if (!err) {
+      if (!ENUMS.category.includes(obj.category)) err = `schema: category "${obj.category}" is not one of ${ENUMS.category.join('|')}`;
+      else if (!ENUMS.priority.includes(obj.priority)) err = `schema: priority "${obj.priority}" is not allowed`;
+    }
+    status = err ? `<span class="no">✗ ${esc(err)}</span><br>Your code needs a repair loop or a fallback. Lab 04's <code>extractWithRepair</code> exists for this.` : '<span class="ok">✓ parses and validates. Safe to act on.</span>';
+  } else status = '<span class="muted">streaming… partial objects must not be acted on yet</span>';
+  $('status').innerHTML = status;
+  $('note').innerHTML = mode === 'prompt'
+    ? 'Free sampling picks the most likely token every time, and the most likely tokens include a friendly preamble, a code fence, <code>"refund"</code> (a natural word, but not in your enum) and <code>"critical"</code>. Each choice is locally reasonable. The result is unusable.'
+    : 'At every step the schema decides which tokens are <b>legal</b>, and only those keep probability. <code>"refund"</code> (46%) is masked, so <code>"billing"</code> wins. The output is guaranteed to parse into your type. Note it guarantees <b>shape, not truth</b>: if the email had no order id, a schema without <code>null</code> would force the model to invent one.';
+}
+
+function partialParse(text) {
+  const start = text.indexOf('{');
+  if (start === -1) return undefined;
+  let s = text.slice(start);
+  const end = s.lastIndexOf('}');
+  if (end !== -1 && end === s.length - 1) { try { return JSON.parse(s); } catch {} }
+  if (end !== -1) { try { return JSON.parse(s.slice(0, end + 1)); } catch {} }
+  // close an open string and the object, drop a dangling key
+  const quotes = (s.match(/(?<!\\)"/g) || []).length;
+  if (quotes % 2) s += '"';
+  s = s.replace(/,\s*"[^"]*"\s*:?\s*$/, '').replace(/,\s*$/, '').replace(/:\s*$/, ':null');
+  try { return JSON.parse(s + '}'); } catch { return undefined; }
+}
+
+$('modes').onclick = (e) => { if (e.target.dataset.m) { mode = e.target.dataset.m; steps = 0; render(); } };
+$('step').onclick = () => { steps++; render(); };
+$('back').onclick = () => { steps = Math.max(0, steps - 1); render(); };
+$('all').onclick = () => { for (let n = 0; n < 40 && !simulate(steps).done; n++) steps++; render(); };
+$('reset').onclick = () => { steps = 0; render(); };
+function esc(s) { return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+render();
+</script>
+</body>
+</html>
