@@ -39,5 +39,18 @@ export async function liveOnly(name: string, live: boolean, fn: () => unknown | 
     console.log(`⏭️  ${name} (live only: set a key in .env and run without LLM_PROVIDER=mock)`);
     return;
   }
-  await report(`${name} [live]`, fn);
+  try {
+    await fn();
+    passed++;
+    console.log(`✅ ${name} [live]`);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    // Provider capacity problems are not your bug: report them loudly, but don't fail the lab.
+    if (/high demand|overloaded|UNAVAILABLE|RESOURCE_EXHAUSTED|rate limit|quota|\b(429|503|529)\b/i.test(msg)) {
+      console.log(`⚠️  ${name} [live] SKIPPED: provider unavailable right now (${msg.slice(0, 120)}). Retry later.`);
+      return;
+    }
+    failed++;
+    console.log(`❌ ${name} [live]\n   ${msg.split('\n').join('\n   ')}`);
+  }
 }

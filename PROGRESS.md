@@ -17,7 +17,21 @@ Tick items as you finish them (`[x]`). A phase is done when its checkpoint in [R
 - [ ] Senior checklist in the phase README: every box ticked
 
 ## Phase 2: Working with LLM APIs (~20 h)
-_Unlocks when the phase is published._
+- [ ] Read first: AI SDK foundations · Anthropic prompt engineering · AI SDK tools · Gemini structured output + function calling · AWS backoff & jitter
+- [ ] Theory: 01 anatomy · 02 prompting · 03 streaming · 04 structured output · 05 tool calling · 06 multimodal · 07 cost/caching/limits
+- [ ] Visualizations: request anatomy · SSE streaming · tool loop · constrained decoding · cost calculator · rate limits & retries
+- [ ] Lab 01 raw HTTP + retries: green (mock) · green (live)
+- [ ] Lab 02 SSE by hand: green · live TTFT measured
+- [ ] Lab 03 AI SDK + prompt eval: green · live accuracy ≥ 7/8
+- [ ] Lab 04 structured output: green
+- [ ] Lab 05 tool calling (manual + SDK): green
+- [ ] Lab 06 multimodal: green · image token cost measured
+- [ ] Lab 07 cost meter + hidden tokens: green
+- [ ] Project Support Copilot: AC1–AC9 pass on `starter` (mock) **and** `LIVE=1`
+- [ ] Clicked through the UI: stop button, tool cards, ticket, meter; console clean
+- [ ] Project self-review rubric ≥ 2 in every row
+- [ ] Quiz ≥ 8/10 · interview questions practised
+- [ ] Senior checklist in the phase README: every box ticked
 
 ## Phase 3: RAG (~22 h)
 _Unlocks when the phase is published._

@@ -48,7 +48,9 @@ Primary sources first: official docs, lab engineering blogs and original authors
 | [Claude Platform docs](https://platform.claude.com/docs) | Messages API, tool use, prompt caching, token counting, model lifecycle. | 2–8 |
 | [OpenAI API docs](https://developers.openai.com/api/docs) | Responses API, structured outputs, models, changelog. | 2–8 |
 | [Gemini API docs](https://ai.google.dev/gemini-api/docs) | The free-tier provider used in labs; embeddings (`gemini-embedding-2`). | 2, 3 |
-| [Groq rate limits](https://console.groq.com/docs/rate-limits) · [OpenRouter limits](https://openrouter.ai/docs/api/reference/limits) | Know your free-tier ceilings before you hit 429s. | 2 |
+| [Groq rate limits](https://console.groq.com/docs/rate-limits) · [OpenRouter limits](https://openrouter.ai/docs/api/reference/limits) · [Gemini rate limits](https://ai.google.dev/gemini-api/docs/rate-limits) | Know your free-tier ceilings before you hit 429s. | 2 |
+| [MDN: Using server-sent events](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events/Using_server-sent_events) | The SSE wire format every LLM stream uses. | 2 |
+| [AWS: Exponential backoff and jitter](https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/) | The classic analysis behind "full jitter" retries. | 2, 7 |
 | [AI SDK docs](https://ai-sdk.dev/docs) **TS** | The framework used from Phase 2 on. | 2–8 |
 | [MCP specification (2026-07-28)](https://modelcontextprotocol.io/specification/2026-07-28) · [MCP Registry](https://registry.modelcontextprotocol.io/) | The protocol itself, and where servers are published. | 5 |
 | [pgvector](https://github.com/pgvector/pgvector) | Index types (HNSW/IVFFlat), iterative scans, tuning. | 3, 8 |

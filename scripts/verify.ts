@@ -18,7 +18,7 @@ async function exists(p: string) {
 function runCheck(file: string, target: string): Promise<{ ok: boolean; ms: number; out: string }> {
   const started = Date.now();
   return new Promise((resolve) => {
-    const env = live ? process.env : { ...process.env, LLM_PROVIDER: 'mock' };
+    const env = live ? { ...process.env, LIVE: '1' } : { ...process.env, LLM_PROVIDER: 'mock' };
     const child = spawn('npx', ['tsx', file, target], { cwd: root, env });
     let out = '';
     child.stdout.on('data', (d) => (out += d));

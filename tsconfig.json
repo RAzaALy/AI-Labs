@@ -13,5 +13,5 @@
     "types": ["node"]
   },
   "include": ["shared/**/*.ts", "scripts/**/*.ts", "phase-*/labs/**/*.ts", "phase-*/project/**/*.ts"],
-  "exclude": ["node_modules", "**/node_modules", "**/.next"]
+  "exclude": ["node_modules", "**/node_modules", "**/.next", "phase-02-llm-apis/project/reference", "phase-02-llm-apis/project/starter"]
 }

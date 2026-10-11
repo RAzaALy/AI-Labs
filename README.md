@@ -12,7 +12,7 @@ A ~130-hour curriculum for an experienced full-stack engineer who is new to AI. 
 | Level | Phase | Hours | You build |
 |---|---|---|---|
 | Base | [1. How LLMs work](phase-01-how-llms-work/) | 10 | LLM X-ray CLI: tokens, cost, semantic search, a local model with your own sampler |
-| Base | 2. Working with LLM APIs | 20 | Streaming chat UI with structured output, tool calling, and a token/cost meter |
+| Base | [2. Working with LLM APIs](phase-02-llm-apis/) | 20 | Streaming chat UI with structured output, tool calling, and a token/cost meter |
 | Intermediate | 3. RAG | 22 | "Chat with your docs" with citations, plus a retrieval eval suite |
 | Intermediate | 4. Agents | 20 | Multi-tool agent that completes real tasks, with human-in-the-loop approvals |
 | Intermediate | 5. MCP | 11 | MCP server over your docs database, used from Claude Code/Desktop and your own agent |
@@ -20,7 +20,7 @@ A ~130-hour curriculum for an experienced full-stack engineer who is new to AI. 
 | Advanced | 7. Production | 16 | Eval + tracing harness wired into CI, with guardrails and cost controls |
 | Advanced | 8. Capstone | 22 | Production Next.js + Node + Postgres/pgvector app with RAG, agents, MCP, jobs, evals, tracing, deployed with a runbook |
 
-Phases 2–8 are added one at a time; each phase folder appears when it's built and verified. The full schedule is in [ROADMAP.md](ROADMAP.md). Tick items off in [PROGRESS.md](PROGRESS.md).
+Phases are added one at a time; each phase folder appears when it's built and verified (Phases 1–2 are published). The full schedule is in [ROADMAP.md](ROADMAP.md). Tick items off in [PROGRESS.md](PROGRESS.md).
 
 ## Stack (versions verified 2026-10-10)
 | Layer | Choice | Why |
@@ -38,10 +38,12 @@ Phases 2–8 are added one at a time; each phase folder appears when it's built 
 ```bash
 node -v            # needs >= 22
 npm install
-cp .env.example .env   # Phase 1 needs nothing in it
-npm run verify:p1      # runs all Phase 1 lab solutions + project acceptance tests
+cp .env.example .env   # Phase 1 needs nothing; from Phase 2 add a free Gemini key for live runs
+npm run verify         # every lab solution + project acceptance test, on a mock model (offline)
+npm run verify:live    # the same against the provider in .env
 ```
 - Local models download once into `.cache/models` (~700 MB for Phase 1, fp32 for exact results).
+- Project apps (Phase 2+) are npm **workspaces**, so the single `npm install` at the root covers them.
 - Hardware assumed: a laptop CPU with 16 GB RAM. No GPU needed. Phase 6 sizes local models for this.
 
 ## How to use this repo
@@ -63,6 +65,7 @@ phase-01-how-llms-work/
   visualizations/       # self-contained interactive HTML (+ _data/generate.ts that bakes real model outputs in)
   labs/NN-name/         # README, starter/, solution/, check.ts
   project/              # README (spec, ACs, diagram, rubric), starter/, reference/, check.ts, fixtures/
+phase-02-llm-apis/      # same shape; project/starter and project/reference are Next.js 16 apps
 ```
 
 ## The concepts most people get wrong

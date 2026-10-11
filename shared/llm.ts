@@ -87,13 +87,16 @@ export function getEmbeddingModel(): { model: EmbeddingModel; modelId: string } 
   return { model: new MockEmbeddingModelV4({ doEmbed: async ({ values }) => ({ embeddings: values.map(hashEmbedding), warnings: [] }) }), modelId: 'mock-hash-embedding' };
 }
 
-/** Deterministic toy embedding for offline runs: bag-of-words hashed into 64 dims, normalized. */
+const STOPWORDS = new Set(['a', 'an', 'the', 'is', 'are', 'was', 'be', 'to', 'of', 'in', 'on', 'for', 'and', 'or', 'how', 'what', 'when', 'do', 'does', 'i', 'my', 'it', 'at', 'by', 'with']);
+
+/** Deterministic toy embedding for offline runs: hashed bag of (non-stop) words in 512 dims, normalized. */
 export function hashEmbedding(text: string): number[] {
-  const v = new Array(64).fill(0);
+  const v = new Array(512).fill(0);
   for (const w of text.toLowerCase().match(/[a-z0-9]+/g) ?? []) {
+    if (STOPWORDS.has(w)) continue;
     let h = 2166136261;
     for (const c of w) h = Math.imul(h ^ c.charCodeAt(0), 16777619);
-    v[(h >>> 0) % 64] += 1;
+    v[(h >>> 0) % 512] += 1;
   }
   const n = Math.hypot(...v) || 1;
   return v.map((x) => x / n);

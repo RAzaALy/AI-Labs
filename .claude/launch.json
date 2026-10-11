@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "p2-copilot-reference",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--workspace", "phase-02-llm-apis/project/reference"],
+      "port": 3020
+    },
+    {
+      "name": "p2-copilot-starter",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--workspace", "phase-02-llm-apis/project/starter"],
+      "port": 3021
+    }
+  ]
+}
