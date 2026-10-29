@@ -1,0 +1,21 @@
+# Postgres 18 + pgvector for Phases 3 to 8.  Start: npm run db:up   Stop: npm run db:down
+name: ai-learning-path
+services:
+  db:
+    image: pgvector/pgvector:0.8.7-pg18-trixie   # pinned: reproducible labs
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app        # local development only
+      POSTGRES_DB: rag
+    ports:
+      - "5433:5432"                 # 5433 so it never clashes with a Postgres you already run
+    volumes:
+      - pgdata:/var/lib/postgresql  # PG 18 moved its data dir; mount the parent (see Railway pgvector notes)
+      - ./init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d rag"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+volumes:
+  pgdata:

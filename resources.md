@@ -54,6 +54,10 @@ Primary sources first: official docs, lab engineering blogs and original authors
 | [AI SDK docs](https://ai-sdk.dev/docs) **TS** | The framework used from Phase 2 on. | 2–8 |
 | [MCP specification (2026-07-28)](https://modelcontextprotocol.io/specification/2026-07-28) · [MCP Registry](https://registry.modelcontextprotocol.io/) | The protocol itself, and where servers are published. | 5 |
 | [pgvector](https://github.com/pgvector/pgvector) | Index types (HNSW/IVFFlat), iterative scans, tuning. | 3, 8 |
+| [Supabase: Hybrid search](https://supabase.com/docs/guides/ai/hybrid-search) | Full-text + pgvector fused with RRF in one SQL function. The pattern behind Lab 03. | 3 |
+| [Pinecone: Chunking strategies](https://www.pinecone.io/learn/chunking-strategies/) | Survey of fixed, structure-aware, semantic and contextual chunking. | 3 |
+| [Jason Liu: Levels of complexity, RAG applications](https://jxnl.co/writing/2024/02/28/levels-of-complexity-rag-applications/) | A staged map from a basic pipeline to observability and evals. | 3, 7 |
+| [AI SDK: RAG Agent guide](https://ai-sdk.dev/cookbook/guides/rag-chatbot) **TS** | *(Optional)* Next.js + pgvector + AI SDK, with retrieval as a tool. Simpler than the Phase 3 project; compare the designs. | 3, 4 |
 | [Ollama docs](https://docs.ollama.com/) · [Ollama library](https://ollama.com/library) | Local runtime and the model catalogue sized for laptops. | 6 |
 | [Unsloth docs](https://docs.unsloth.ai/) | *(Optional)* The fastest path to a LoRA fine-tune on a free Colab GPU. | 6 |
 | [promptfoo docs](https://www.promptfoo.dev/docs/intro/) · [Langfuse docs](https://langfuse.com/docs) | Evals in CI; tracing and prompt management. | 7 |

@@ -34,7 +34,22 @@ Tick items as you finish them (`[x]`). A phase is done when its checkpoint in [R
 - [ ] Senior checklist in the phase README: every box ticked
 
 ## Phase 3: RAG (~22 h)
-_Unlocks when the phase is published._
+- [ ] Setup: Docker works without sudo · `npm run db:up` · `npm run verify:p3` green
+- [ ] Read first: Anthropic contextual retrieval · Pinecone chunking strategies · pgvector README · Supabase hybrid search · Jason Liu levels of RAG
+- [ ] Theory: 01 overview · 02 chunking · 03 embeddings & pgvector · 04 hybrid · 05 reranking · 06 generation & citations · 07 retrieval evals
+- [ ] Visualizations: RAG pipeline · chunking playground · HNSW search · hybrid RRF · rerank funnel · retrieval metrics
+- [ ] Lab 01 chunking: green · fixed vs structure-aware compared
+- [ ] Lab 02 pgvector: green · ANN recall vs `ef_search` measured
+- [ ] Lab 03 hybrid search + RRF: green · E-4290 case understood
+- [ ] Lab 04 reranking: green · decided from MRR + latency whether to keep it
+- [ ] Lab 05 retrieval evals: green · your keyword / vector / hybrid table recorded
+- [ ] Lab 06 grounded answers: green (mock) · live golden-set accuracy recorded
+- [ ] Project Docs Chat: AC1–AC8 pass on `starter` (mock) **and** `LIVE=1`
+- [ ] `npm run eval -- --answers` run live; failures read and explained
+- [ ] Clicked through the UI: citation chips, sources panel, "not in the docs" badge; console clean
+- [ ] Project self-review rubric ≥ 2 in every row
+- [ ] Quiz ≥ 8/10 · interview questions practised
+- [ ] Senior checklist in the phase README: every box ticked
 
 ## Phase 4: Agents (~20 h)
 _Unlocks when the phase is published._

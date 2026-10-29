@@ -3,6 +3,7 @@
 //        npm run verify -- phase-02   (one phase)
 //        npm run verify:live          (uses the real provider from .env — spends free-tier quota)
 import { spawn } from 'node:child_process';
+import { connect } from 'node:net';
 import { readdir, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -39,6 +40,19 @@ for (const phase of phases) {
   }
   const projectCheck = path.join(root, phase, 'project', 'check.ts');
   if (await exists(projectCheck)) jobs.push({ name: `${phase}/project`, file: projectCheck, target: 'reference' });
+}
+
+// Phase 3+ need Postgres. Say so up front instead of letting every check fail with ECONNREFUSED.
+if (phases.some((p) => p >= 'phase-03')) {
+  try {
+    process.loadEnvFile(path.join(root, '.env'));
+  } catch {}
+  const url = new URL(process.env.DATABASE_URL_TEST ?? 'postgres://app:app@localhost:5433/rag_test');
+  const up = await new Promise<boolean>((resolve) => {
+    const sock = connect(Number(url.port || 5432), url.hostname, () => (sock.end(), resolve(true)));
+    sock.on('error', () => resolve(false));
+  });
+  if (!up) console.log(`⚠️  Postgres is not reachable at ${url.hostname}:${url.port}: phase 3+ checks will fail. Start it with: npm run db:up\n`);
 }
 
 console.log(live ? '▶ LIVE mode: using the provider configured in .env\n' : '▶ MOCK mode: no API calls (use npm run verify:live for real models)\n');

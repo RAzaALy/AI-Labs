@@ -12,7 +12,13 @@
     "verify:live": "tsx scripts/verify.ts --live",
     "verify:p1": "tsx scripts/verify.ts phase-01",
     "verify:p2": "tsx scripts/verify.ts phase-02",
-    "verify:p2:live": "tsx scripts/verify.ts phase-02 --live"
+    "verify:p2:live": "tsx scripts/verify.ts phase-02 --live",
+    "db:up": "docker compose -f infra/docker-compose.yml up -d --wait",
+    "db:down": "docker compose -f infra/docker-compose.yml down",
+    "db:reset": "docker compose -f infra/docker-compose.yml down -v && docker compose -f infra/docker-compose.yml up -d --wait",
+    "db:psql": "docker compose -f infra/docker-compose.yml exec db psql -U app -d rag",
+    "verify:p3": "tsx scripts/verify.ts phase-03",
+    "verify:p3:live": "tsx scripts/verify.ts phase-03 --live"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
@@ -29,10 +35,13 @@
     "ai": "^7.0.137",
     "dotenv": "^18.0.7",
     "js-tiktoken": "^1.0.21",
+    "postgres": "^3.4.9",
     "zod": "^4.6.5"
   },
   "workspaces": [
     "phase-02-llm-apis/project/reference",
-    "phase-02-llm-apis/project/starter"
+    "phase-02-llm-apis/project/starter",
+    "phase-03-rag/project/reference",
+    "phase-03-rag/project/starter"
   ]
 }

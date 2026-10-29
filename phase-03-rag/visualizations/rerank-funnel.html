@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Retrieval Funnel and Reranking</title>
+<style>
+  :root { --bg: #f7f7f5; --card: #ffffff; --ink: #1d1d1b; --muted: #6b6b66; --line: #e3e2dc; --accent: #3b5bdb; --accent-soft: #e7ecff; --warn: #c2410c; --good: #15803d; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #151514; --card: #1f1f1d; --ink: #ececea; --muted: #a3a39c; --line: #34342f; --accent: #8da2fb; --accent-soft: #262b45; --warn: #fb923c; --good: #4ade80; } }
+  :root[data-theme="dark"] { --bg: #151514; --card: #1f1f1d; --ink: #ececea; --muted: #a3a39c; --line: #34342f; --accent: #8da2fb; --accent-soft: #262b45; --warn: #fb923c; --good: #4ade80; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1100px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 1.6rem; margin: 0 0 4px; } h2 { font-size: 1.02rem; margin: 0 0 8px; }
+  p.lead { color: var(--muted); margin: 0 0 16px; max-width: 85ch; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px; margin-bottom: 16px; min-width: 0; }
+  .layout { display: grid; grid-template-columns: 320px minmax(0, 1fr); gap: 16px; }
+  @media (max-width: 860px) { .layout { grid-template-columns: 1fr; } }
+  label.ctl { display: block; font-size: 14px; margin: 10px 0 0; } label.ctl b { float: right; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  select { font: inherit; width: 100%; padding: 6px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--ink); }
+  .stage { margin: 0 auto 6px; border-radius: 8px; padding: 10px 14px; color: #fff; display: flex; justify-content: space-between; gap: 10px; font-size: 14px; transition: width .3s; }
+  .stage small { opacity: .9; }
+  .lat { display: flex; height: 28px; border-radius: 6px; overflow: hidden; margin: 8px 0; }
+  .lat div { display: flex; align-items: center; justify-content: center; color: #fff; font-size: 11.5px; white-space: nowrap; overflow: hidden; }
+  .stat { display: inline-block; padding: 4px 10px; border-radius: 999px; background: var(--accent-soft); margin: 2px 4px 2px 0; font-size: 13px; }
+  .callout { border-left: 3px solid var(--warn); padding: 6px 12px; background: var(--bg); border-radius: 0 8px 8px 0; margin-top: 10px; font-size: 14px; }
+  .muted { color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>The retrieval funnel: where reranking fits</h1>
+  <p class="lead">Cheap stages look at many documents; expensive stages look at few. Tune the funnel and watch the latency budget and token cost. The defaults use numbers measured in this phase: hybrid search in a few ms, local cross-encoder reranking at ≈190 ms per candidate on a laptop CPU, and Gemini's first token after ≈1 s (Phase 2).</p>
+  <div class="layout">
+    <section class="card">
+      <label class="ctl">Corpus size (chunks) <b id="nV"></b></label><input type="range" id="n" min="2" max="7" step="0.1" value="5">
+      <label class="ctl">Candidates from hybrid search <b id="cV"></b></label><input type="range" id="c" min="5" max="100" step="5" value="20">
+      <label class="ctl">Reranker</label>
+      <select id="rr">
+        <option value="none">None</option>
+        <option value="cpu" selected>Local cross-encoder on CPU (≈190 ms / candidate, measured)</option>
+        <option value="gpu">Local cross-encoder on GPU (≈3 ms / candidate)</option>
+        <option value="hosted">Hosted reranker API (≈150 ms per call)</option>
+      </select>
+      <label class="ctl">Chunks sent to the LLM (top-k) <b id="kV"></b></label><input type="range" id="k" min="1" max="20" value="5">
+      <label class="ctl">Tokens per chunk <b id="tV"></b></label><input type="range" id="t" min="50" max="800" step="50" value="200">
+    </section>
+    <section class="card">
+      <div id="funnel"></div>
+      <h2 style="margin-top:14px">Latency before the first answer token</h2>
+      <div class="lat" id="lat"></div>
+      <div id="stats"></div>
+      <div class="callout" id="note"></div>
+    </section>
+  </div>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const fmt = (n) => (n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? (n / 1e3).toFixed(0) + 'K' : String(Math.round(n)));
+function render() {
+  const N = Math.round(10 ** +$('n').value), C = Math.min(+$('c').value, N), K = Math.min(+$('k').value, C), T = +$('t').value, rr = $('rr').value;
+  $('nV').textContent = fmt(N); $('cV').textContent = C; $('kV').textContent = K; $('tV').textContent = T;
+  const embedMs = 40, searchMs = 3 + Math.log10(N) * 4;
+  const rerankMs = rr === 'none' ? 0 : rr === 'cpu' ? C * 190 : rr === 'gpu' ? 20 + C * 3 : 150;
+  const promptTokens = 400 + K * T;
+  const ttftMs = 600 + promptTokens * 0.15;
+  const width = (x) => `${Math.max(18, x)}%`;
+  const stages = [
+    ['Corpus', `${fmt(N)} chunks`, 'never scanned per query', 100, '#64748b'],
+    ['Hybrid retrieval (HNSW + GIN)', `${C} candidates`, `~${searchMs.toFixed(0)} ms`, 70, '#7c3aed'],
+    ...(rr === 'none' ? [] : [['Cross-encoder rerank', `${K} best`, `~${rerankMs.toFixed(0)} ms`, 45, '#d97706']]),
+    ['LLM context', `${K} chunks ≈ ${fmt(promptTokens)} tokens`, `TTFT ~${(ttftMs / 1000).toFixed(1)} s`, 28, '#2563eb'],
+  ];
+  $('funnel').innerHTML = stages.map(([n, a, b, w, c]) => `<div class="stage" style="width:${width(w)};background:${c}"><span><b>${n}</b><br><small>${a}</small></span><small>${b}</small></div>`).join('');
+  const total = embedMs + searchMs + rerankMs + ttftMs;
+  const seg = (ms, c, label) => (ms > 0 ? `<div style="width:${(ms / total) * 100}%;background:${c}" title="${label} ${ms.toFixed(0)} ms">${ms / total > 0.08 ? label : ''}</div>` : '');
+  $('lat').innerHTML = seg(embedMs, '#0ea5e9', 'embed query') + seg(searchMs, '#7c3aed', 'search') + seg(rerankMs, '#d97706', 'rerank') + seg(ttftMs, '#2563eb', 'LLM first token');
+  const costPer1k = (promptTokens * 0.3) / 1e6 * 1000;
+  $('stats').innerHTML = `<span class="stat">time to first token ≈ <b>${(total / 1000).toFixed(2)} s</b></span><span class="stat">prompt ≈ <b>${fmt(promptTokens)}</b> tokens</span><span class="stat">input cost per 1,000 questions ≈ <b>$${costPer1k.toFixed(2)}</b> (flash-lite)</span>`;
+  $('note').innerHTML = rr === 'cpu' && rerankMs > 2000
+    ? `Reranking ${C} candidates on a laptop CPU adds <b>${(rerankMs / 1000).toFixed(1)} s</b> before the first token, more than the LLM itself. Use fewer candidates, a GPU, a hosted reranker, or measure whether you need it at all. In Lab 04 it <i>lowered</i> MRR on top of strong Gemini retrieval.`
+    : K * T > 3000
+      ? `${K} × ${T} tokens sends ≈${fmt(K * T)} tokens of sources per question: cost and noise go up and recall barely does. This is exactly where a reranker earns its place: retrieve wide, send narrow.`
+      : `Balanced: the funnel narrows ${fmt(N)} → ${C} → ${K}. Every stage is cheap relative to the one after it, and that's the whole design.`;
+}
+['n', 'c', 'k', 't', 'rr'].forEach((id) => $(id).addEventListener('input', render));
+render();
+</script>
+</body>
+</html>

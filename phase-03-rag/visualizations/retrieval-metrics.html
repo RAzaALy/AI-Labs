@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Retrieval Metrics</title>
+<style>
+  :root { --bg: #f7f7f5; --card: #ffffff; --ink: #1d1d1b; --muted: #6b6b66; --line: #e3e2dc; --accent: #3b5bdb; --accent-soft: #e7ecff; --warn: #c2410c; --good: #15803d; --good-soft: #e3f4e8; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #151514; --card: #1f1f1d; --ink: #ececea; --muted: #a3a39c; --line: #34342f; --accent: #8da2fb; --accent-soft: #262b45; --warn: #fb923c; --good: #4ade80; --good-soft: #17301f; } }
+  :root[data-theme="dark"] { --bg: #151514; --card: #1f1f1d; --ink: #ececea; --muted: #a3a39c; --line: #34342f; --accent: #8da2fb; --accent-soft: #262b45; --warn: #fb923c; --good: #4ade80; --good-soft: #17301f; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1100px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 1.6rem; margin: 0 0 4px; } h2 { font-size: 1.02rem; margin: 0 0 8px; }
+  p.lead { color: var(--muted); margin: 0 0 16px; max-width: 85ch; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px; margin-bottom: 16px; min-width: 0; }
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
+  @media (max-width: 860px) { .layout { grid-template-columns: 1fr; } }
+  .res { display: grid; grid-template-columns: 34px 1fr 90px; gap: 8px; align-items: center; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--line); margin-bottom: 6px; cursor: pointer; font-size: 14px; }
+  .res.rel { background: var(--good-soft); border-color: var(--good); }
+  .res.cut { opacity: .45; }
+  .res .g { font: 12px ui-monospace, Menlo, Consolas, monospace; color: var(--muted); text-align: right; }
+  .rank { font-weight: 600; text-align: center; }
+  label.ctl { display: block; font-size: 14px; margin: 10px 0 0; } label.ctl b { float: right; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  button { font: inherit; font-size: 13px; padding: 5px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--ink); cursor: pointer; margin: 4px 4px 0 0; }
+  .metric { border-radius: 10px; background: var(--accent-soft); padding: 10px 12px; margin-bottom: 10px; }
+  .metric .v { font-size: 1.6rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .metric .f { font: 12.5px ui-monospace, Menlo, Consolas, monospace; color: var(--muted); }
+  .metric .q { font-size: 13px; }
+  .callout { border-left: 3px solid var(--warn); padding: 6px 12px; background: var(--bg); border-radius: 0 8px 8px 0; margin-top: 10px; font-size: 14px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Retrieval metrics, hands-on</h1>
+  <p class="lead">The question is <i>"What happens after a card is declined three times?"</i> Below is a retriever's ranked output. <b>Click results to mark them relevant</b>, set how many relevant sections exist in total (including ones the retriever never found), and move <b>k</b> (how many results you'd send to the LLM). Every metric shows its own arithmetic.</p>
+  <div class="layout">
+    <section class="card">
+      <h2>Ranked results</h2>
+      <div id="list"></div>
+      <label class="ctl">k (results sent to the LLM) <b id="kV"></b></label><input type="range" id="k" min="1" max="10" value="3">
+      <label class="ctl">Relevant sections that exist in the corpus <b id="totV"></b></label><input type="range" id="tot" min="1" max="6" value="2">
+      <div><button data-p="top">Good at the top</button><button data-p="bottom">Good at the bottom</button><button data-p="miss">Missed one</button><button data-p="none">Nothing relevant</button></div>
+    </section>
+    <section class="card">
+      <h2>Metrics</h2>
+      <div id="metrics"></div>
+      <div class="callout" id="note"></div>
+    </section>
+  </div>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const RESULTS = ['billing › Failed payments', 'billing › Refund policy', 'webhooks › Retries', 'billing › Duplicate charges', 'billing › Changing plans', 'incident › Paging and on-call', 'api-errors › Server errors', 'rate-limits › Handling 429 responses', 'security › Key rotation', 'onboarding › Week one'];
+let rel = new Set([0, 3]);
+const PRESETS = { top: [[0, 3], 2], bottom: [[7, 9], 2], miss: [[0], 2], none: [[], 1] };
+
+function render() {
+  const k = +$('k').value, tot = Math.max(+$('tot').value, rel.size);
+  $('tot').value = tot; $('kV').textContent = k; $('totV').textContent = tot;
+  $('list').innerHTML = RESULTS.map((r, i) => `<div class="res ${rel.has(i) ? 'rel' : ''} ${i >= k ? 'cut' : ''}" data-i="${i}"><span class="rank">#${i + 1}</span><span>${r}${rel.has(i) ? ' ✓' : ''}</span><span class="g">${rel.has(i) ? `1/log₂(${i + 2})=${(1 / Math.log2(i + 2)).toFixed(2)}` : ''}</span></div>`).join('');
+  const inK = [...rel].filter((i) => i < k).length;
+  const recall = inK / tot;
+  const precision = inK / k;
+  const first = [...rel].sort((a, b) => a - b)[0];
+  const rr = first === undefined ? 0 : 1 / (first + 1);
+  const dcg = [...rel].filter((i) => i < k).reduce((s, i) => s + 1 / Math.log2(i + 2), 0);
+  const idcg = Array.from({ length: Math.min(k, tot) }, (_, i) => 1 / Math.log2(i + 2)).reduce((a, b) => a + b, 0);
+  const ndcg = idcg ? dcg / idcg : 0;
+  const card = (name, v, f, q) => `<div class="metric"><div class="q">${name}: ${q}</div><div class="v">${(v * 100).toFixed(0)}%</div><div class="f">${f}</div></div>`;
+  $('metrics').innerHTML =
+    card(`recall@${k}`, recall, `${inK} relevant in top ${k} / ${tot} relevant overall`, 'did the answer reach the LLM?') +
+    card(`precision@${k}`, precision, `${inK} relevant / ${k} sent`, 'how much noise did we send?') +
+    card('reciprocal rank', rr, first === undefined ? 'no relevant result: 0' : `1 / ${first + 1} (first relevant at #${first + 1})`, 'how high is the first good hit?') +
+    card(`nDCG@${k}`, ndcg, `DCG ${dcg.toFixed(2)} / ideal ${idcg.toFixed(2)}`, 'are the good hits near the top?');
+  $('note').innerHTML = recall < 1
+    ? `<b>recall@${k} = ${(recall * 100).toFixed(0)}%</b>: the LLM never sees ${tot - inK} of the relevant section(s). No prompt can fix that, so this is the number to gate on for RAG. Raise k or improve retrieval.`
+    : precision < 0.5
+      ? `Everything relevant is in context, but ${k - inK} of ${k} sources are noise. They cost tokens and can distract the model ("lost in the middle"). Consider a smaller k or a reranker.`
+      : `Good: all relevant sections are in the top ${k} with little noise. Now move the relevant results down the list, and watch MRR and nDCG drop while recall stays the same.`;
+}
+$('list').onclick = (e) => { const r = e.target.closest('.res'); if (!r) return; const i = +r.dataset.i; rel.has(i) ? rel.delete(i) : rel.add(i); render(); };
+document.querySelectorAll('[data-p]').forEach((b) => (b.onclick = () => { const [ids, t] = PRESETS[b.dataset.p]; rel = new Set(ids); $('tot').value = t; render(); }));
+$('k').oninput = render; $('tot').oninput = render;
+render();
+</script>
+</body>
+</html>

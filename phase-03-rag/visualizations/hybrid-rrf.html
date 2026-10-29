@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hybrid Search with RRF</title>
+<style>
+  :root { --bg: #f7f7f5; --card: #ffffff; --ink: #1d1d1b; --muted: #6b6b66; --line: #e3e2dc; --accent: #3b5bdb; --accent-soft: #e7ecff; --warn: #c2410c; --good: #15803d; --good-soft: #e3f4e8; --kw: #d97706; --vec: #7c3aed; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #151514; --card: #1f1f1d; --ink: #ececea; --muted: #a3a39c; --line: #34342f; --accent: #8da2fb; --accent-soft: #262b45; --warn: #fb923c; --good: #4ade80; --good-soft: #17301f; --kw: #fbbf24; --vec: #a78bfa; } }
+  :root[data-theme="dark"] { --bg: #151514; --card: #1f1f1d; --ink: #ececea; --muted: #a3a39c; --line: #34342f; --accent: #8da2fb; --accent-soft: #262b45; --warn: #fb923c; --good: #4ade80; --good-soft: #17301f; --kw: #fbbf24; --vec: #a78bfa; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1200px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 1.6rem; margin: 0 0 4px; } h2 { font-size: 1.02rem; margin: 0 0 8px; }
+  p.lead { color: var(--muted); margin: 0 0 16px; max-width: 85ch; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px; margin-bottom: 16px; min-width: 0; }
+  .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+  @media (max-width: 980px) { .grid { grid-template-columns: 1fr; } }
+  .tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+  button { font: inherit; font-size: 13px; padding: 5px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--ink); cursor: pointer; }
+  button.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-top: 10px; font-size: 14px; }
+  input[type=range] { accent-color: var(--accent); width: 180px; }
+  ol { margin: 0; padding-left: 22px; font-size: 13px; }
+  li { padding: 3px 4px; border-radius: 6px; margin: 2px 0; }
+  li.rel { background: var(--good-soft); }
+  li .sc { float: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+  li .tag { font-size: 11px; color: var(--good); font-weight: 600; }
+  .bar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; margin-top: 3px; background: var(--bg); }
+  .bar span { height: 100%; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .pill { display: inline-block; padding: 3px 10px; border-radius: 999px; background: var(--accent-soft); margin: 2px 4px 2px 0; font-size: 13px; }
+  .callout { border-left: 3px solid var(--warn); padding: 6px 12px; background: var(--bg); border-radius: 0 8px 8px 0; margin-top: 10px; font-size: 14px; }
+  .k { color: var(--kw); font-weight: 600; } .v { color: var(--vec); font-weight: 600; }
+  code { font-size: 12.5px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Hybrid search: keyword + vector, fused with RRF</h1>
+  <p class="lead">Real results from Lab 03 on the Acme handbook (Postgres full-text and pgvector with <span id="emb"></span>). Rows in green are the sections the golden set says answer the question. Pick a question, then drag <code>k</code>: Reciprocal Rank Fusion scores each section by <code>Σ 1/(k + rank)</code> over both lists, using <b>ranks only</b>, so <code>ts_rank</code> and cosine scores never need to be compared.</p>
+  <section class="card">
+    <div class="tabs" id="queries"></div>
+    <div class="row">
+      <label>RRF <code>k</code> <input type="range" id="k" min="1" max="120" value="60"> <b id="kV"></b></label>
+      <label>keyword weight <input type="range" id="w" min="0" max="2" step="0.1" value="1"> <b id="wV"></b></label>
+      <span class="muted">(weight 1 = plain RRF)</span>
+    </div>
+    <div class="row" id="metrics"></div>
+  </section>
+  <div class="grid">
+    <section class="card"><h2><span class="k">■</span> Keyword (full-text)</h2><ol id="kw"></ol></section>
+    <section class="card"><h2><span class="v">■</span> Vector (cosine)</h2><ol id="vec"></ol></section>
+    <section class="card"><h2>Fused (RRF)</h2><ol id="fused"></ol></section>
+  </div>
+  <div class="callout" id="note"></div>
+</main>
+<script type="application/json" id="viz-data">{"embedder":"minilm-l6-v2-384","queries":[{"id":"q05","type":"keyword","query":"What does error E-4012 mean?","relevant":["api-errors.md::Request errors","webhooks.md::Verifying signatures"],"keyword":[{"file":"api-errors.md","section":"Request errors","score":3.6},{"file":"api-errors.md","section":"(intro)","score":3},{"file":"api-errors.md","section":"Authentication errors","score":2.2},{"file":"api-errors.md","section":"Server errors","score":2.2},{"file":"webhooks.md","section":"Verifying signatures","score":2.2},{"file":"api-errors.md","section":"Rate limit errors","score":1.4},{"file":"incident-response.md","section":"Error budget","score":1.4},{"file":"rate-limits-and-quotas.md","section":"Limits per plan","score":0.8},{"file":"billing-and-refunds.md","section":"Refund policy","score":0.4},{"file":"deploys-and-rollbacks.md","section":"How to deploy","score":0.4}],"vector":[{"file":"api-errors.md","section":"(intro)","score":0.525},{"file":"api-errors.md","section":"Authentication errors","score":0.524},{"file":"api-errors.md","section":"Server errors","score":0.494},{"file":"api-errors.md","section":"Request errors","score":0.45},{"file":"api-errors.md","section":"Rate limit errors","score":0.421},{"file":"webhooks.md","section":"Verifying signatures","score":0.393},{"file":"rate-limits-and-quotas.md","section":"Limits per plan","score":0.328},{"file":"rate-limits-and-quotas.md","section":"Handling 429 responses","score":0.276},{"file":"incident-response.md","section":"Error budget","score":0.266},{"file":"webhooks.md","section":"Retries","score":0.257}]},{"id":"q06","type":"keyword","query":"E-4290","relevant":["api-errors.md::Rate limit errors","rate-limits-and-quotas.md::Limits per plan"],"keyword":[{"file":"api-errors.md","section":"Rate limit errors","score":1.8},{"file":"rate-limits-and-quotas.md","section":"Limits per plan","score":1.8},{"file":"api-errors.md","section":"Authentication errors","score":1.2},{"file":"api-errors.md","section":"Request errors","score":1.2},{"file":"api-errors.md","section":"Server errors","score":0.8},{"file":"api-errors.md","section":"(intro)","score":0.4},{"file":"webhooks.md","section":"Verifying signatures","score":0.4}],"vector":[{"file":"api-errors.md","section":"Server errors","score":0.285},{"file":"rate-limits-and-quotas.md","section":"Limits per plan","score":0.241},{"file":"api-errors.md","section":"Rate limit errors","score":0.21},{"file":"webhooks.md","section":"Verifying signatures","score":0.184},{"file":"api-errors.md","section":"Authentication errors","score":0.18},{"file":"incident-response.md","section":"Severity levels","score":0.178},{"file":"webhooks.md","section":"Retries","score":0.171},{"file":"incident-response.md","section":"Roles during an incident","score":0.162},{"file":"security-and-access.md","section":"Reporting a security issue","score":0.143},{"file":"refund-policy-2024.md","section":"(intro)","score":0.141}]},{"id":"q01","type":"paraphrase","query":"How do I undo a bad release?","relevant":["deploys-and-rollbacks.md::Rolling back a bad release"],"keyword":[{"file":"deploys-and-rollbacks.md","section":"Rolling back a bad release","score":1.8},{"file":"deploys-and-rollbacks.md","section":"Deploy windows","score":0.4}],"vector":[{"file":"deploys-and-rollbacks.md","section":"Rolling back a bad release","score":0.476},{"file":"deploys-and-rollbacks.md","section":"Database migrations and rollbacks","score":0.352},{"file":"deploys-and-rollbacks.md","section":"Feature flags instead of risky deploys","score":0.224},{"file":"deploys-and-rollbacks.md","section":"Deploy windows","score":0.215},{"file":"feature-flags.md","section":"(intro)","score":0.201},{"file":"billing-and-refunds.md","section":"Changing plans","score":0.192},{"file":"feature-flags.md","section":"Cleanup policy","score":0.19},{"file":"security-and-access.md","section":"Access reviews","score":0.173},{"file":"rate-limits-and-quotas.md","section":"Handling 429 responses","score":0.169},{"file":"incident-response.md","section":"Error budget","score":0.168}]},{"id":"q26","type":"paraphrase","query":"Are text message codes OK for two-factor login?","relevant":["security-and-access.md::Accounts and sign-in"],"keyword":[{"file":"api-errors.md","section":"(intro)","score":1.6},{"file":"onboarding-new-engineers.md","section":"Week two","score":1.4},{"file":"security-and-access.md","section":"Accounts and sign-in","score":0.8},{"file":"billing-and-refunds.md","section":"Plans and prices","score":0.4},{"file":"deploys-and-rollbacks.md","section":"Rolling back a bad release","score":0.4},{"file":"deploys-and-rollbacks.md","section":"Database migrations and rollbacks","score":0.4},{"file":"feature-flags.md","section":"(intro)","score":0.4},{"file":"feature-flags.md","section":"Cleanup policy","score":0.4},{"file":"onboarding-new-engineers.md","section":"(intro)","score":0.4},{"file":"onboarding-new-engineers.md","section":"Before day one","score":0.4}],"vector":[{"file":"security-and-access.md","section":"Accounts and sign-in","score":0.483},{"file":"onboarding-new-engineers.md","section":"Before day one","score":0.197},{"file":"onboarding-new-engineers.md","section":"Who to ask","score":0.174},{"file":"feature-flags.md","section":"(intro)","score":0.163},{"file":"api-errors.md","section":"(intro)","score":0.159},{"file":"security-and-access.md","section":"Reporting a security issue","score":0.149},{"file":"data-retention-and-backups.md","section":"Log retention","score":0.13},{"file":"incident-response.md","section":"Severity levels","score":0.127},{"file":"security-and-access.md","section":"Secrets management","score":0.122},{"file":"feature-flags.md","section":"Kill switches","score":0.117}]},{"id":"q16","type":"conflict","query":"How long do customers have to ask for their money back?","relevant":["billing-and-refunds.md::Refund policy"],"keyword":[{"file":"deploys-and-rollbacks.md","section":"Rolling back a bad release","score":2.2},{"file":"onboarding-new-engineers.md","section":"Who to ask","score":1.8},{"file":"data-retention-and-backups.md","section":"Customer data deletion (GDPR)","score":1.4},{"file":"billing-and-refunds.md","section":"Plans and prices","score":1.2},{"file":"billing-and-refunds.md","section":"Refund policy","score":0.8},{"file":"incident-response.md","section":"Severity levels","score":0.8},{"file":"security-and-access.md","section":"Key rotation","score":0.8},{"file":"refund-policy-2024.md","section":"Refund window","score":0.4},{"file":"refund-policy-2024.md","section":"Duplicate charges","score":0.4},{"file":"billing-and-refunds.md","section":"Duplicate charges","score":0.4}],"vector":[{"file":"refund-policy-2024.md","section":"Refund window","score":0.591},{"file":"billing-and-refunds.md","section":"Refund policy","score":0.583},{"file":"billing-and-refunds.md","section":"Failed payments","score":0.442},{"file":"incident-response.md","section":"Error budget","score":0.417},{"file":"refund-policy-2024.md","section":"Duplicate charges","score":0.393},{"file":"data-retention-and-backups.md","section":"Customer data deletion (GDPR)","score":0.392},{"file":"webhooks.md","section":"Retries","score":0.383},{"file":"billing-and-refunds.md","section":"Changing plans","score":0.381},{"file":"rate-limits-and-quotas.md","section":"Raising limits","score":0.379},{"file":"billing-and-refunds.md","section":"Duplicate charges","score":0.349}]},{"id":"q17","type":"paraphrase","query":"A customer was billed twice for one invoice. What happens?","relevant":["billing-and-refunds.md::Duplicate charges"],"keyword":[{"file":"billing-and-refunds.md","section":"Plans and prices","score":2},{"file":"billing-and-refunds.md","section":"Duplicate charges","score":2},{"file":"data-retention-and-backups.md","section":"Customer data deletion (GDPR)","score":1.4},{"file":"onboarding-new-engineers.md","section":"Before day one","score":1.4},{"file":"billing-and-refunds.md","section":"Refund policy","score":1.2},{"file":"onboarding-new-engineers.md","section":"Week one","score":1},{"file":"refund-policy-2024.md","section":"Duplicate charges","score":0.8},{"file":"billing-and-refunds.md","section":"Changing plans","score":0.8},{"file":"feature-flags.md","section":"Creating a flag","score":0.8},{"file":"incident-response.md","section":"(intro)","score":0.8}],"vector":[{"file":"billing-and-refunds.md","section":"Duplicate charges","score":0.74},{"file":"refund-policy-2024.md","section":"Duplicate charges","score":0.472},{"file":"billing-and-refunds.md","section":"Plans and prices","score":0.348},{"file":"billing-and-refunds.md","section":"Changing plans","score":0.34},{"file":"billing-and-refunds.md","section":"Failed payments","score":0.311},{"file":"incident-response.md","section":"Severity levels","score":0.291},{"file":"rate-limits-and-quotas.md","section":"Limits per plan","score":0.283},{"file":"incident-response.md","section":"Error budget","score":0.282},{"file":"webhooks.md","section":"Idempotency","score":0.277},{"file":"incident-response.md","section":"Paging and on-call","score":0.264}]},{"id":"q12","type":"paraphrase","query":"Who gets paged when everything is down?","relevant":["incident-response.md::Severity levels"],"keyword":[{"file":"incident-response.md","section":"Paging and on-call","score":2.2},{"file":"refund-policy-2024.md","section":"(intro)","score":0.8},{"file":"api-errors.md","section":"Server errors","score":0.4},{"file":"billing-and-refunds.md","section":"Plans and prices","score":0.4},{"file":"incident-response.md","section":"Severity levels","score":0.4},{"file":"incident-response.md","section":"Roles during an incident","score":0.4},{"file":"incident-response.md","section":"After the incident","score":0.4},{"file":"rate-limits-and-quotas.md","section":"Handling 429 responses","score":0.4},{"file":"security-and-access.md","section":"Key rotation","score":0.4},{"file":"security-and-access.md","section":"Reporting a security issue","score":0.4}],"vector":[{"file":"incident-response.md","section":"Paging and on-call","score":0.529},{"file":"security-and-access.md","section":"Reporting a security issue","score":0.268},{"file":"feature-flags.md","section":"Rolling out","score":0.242},{"file":"incident-response.md","section":"Severity levels","score":0.218},{"file":"incident-response.md","section":"Error budget","score":0.204},{"file":"webhooks.md","section":"Retries","score":0.198},{"file":"incident-response.md","section":"Roles during an incident","score":0.189},{"file":"billing-and-refunds.md","section":"Changing plans","score":0.148},{"file":"rate-limits-and-quotas.md","section":"Handling 429 responses","score":0.147},{"file":"security-and-access.md","section":"Access reviews","score":0.144}]},{"id":"q32","type":"paraphrase","query":"How do I avoid processing the same event twice?","relevant":["webhooks.md::Idempotency"],"keyword":[{"file":"webhooks.md","section":"Idempotency","score":1.2},{"file":"rate-limits-and-quotas.md","section":"Monthly quotas","score":0.8},{"file":"api-errors.md","section":"Authentication errors","score":0.4},{"file":"refund-policy-2024.md","section":"Refund window","score":0.4},{"file":"billing-and-refunds.md","section":"Refund policy","score":0.4},{"file":"billing-and-refunds.md","section":"Duplicate charges","score":0.4},{"file":"incident-response.md","section":"(intro)","score":0.4},{"file":"incident-response.md","section":"After the incident","score":0.4},{"file":"webhooks.md","section":"Retries","score":0.4}],"vector":[{"file":"webhooks.md","section":"Idempotency","score":0.512},{"file":"billing-and-refunds.md","section":"Duplicate charges","score":0.416},{"file":"refund-policy-2024.md","section":"Duplicate charges","score":0.322},{"file":"webhooks.md","section":"Retries","score":0.234},{"file":"rate-limits-and-quotas.md","section":"Handling 429 responses","score":0.227},{"file":"incident-response.md","section":"(intro)","score":0.214},{"file":"incident-response.md","section":"Paging and on-call","score":0.201},{"file":"incident-response.md","section":"After the incident","score":0.181},{"file":"incident-response.md","section":"Roles during an incident","score":0.149},{"file":"incident-response.md","section":"Error budget","score":0.119}]}]}</script>
+<script>
+const DATA = JSON.parse(document.getElementById('viz-data').textContent);
+const $ = (id) => document.getElementById(id);
+$('emb').textContent = DATA.embedder;
+let qi = 0;
+const key = (h) => `${h.file}::${h.section === '(intro)' ? '' : h.section}`;
+const label = (h) => `${h.file.replace('.md', '')} › ${h.section}`;
+
+function fuse(q, k, w) {
+  const m = new Map();
+  const add = (list, name, weight) => list.forEach((h, i) => {
+    const e = m.get(key(h)) ?? { h, score: 0, parts: {}, ranks: {} };
+    e.parts[name] = weight / (k + i + 1); e.ranks[name] = i + 1; e.score += e.parts[name];
+    m.set(key(h), e);
+  });
+  add(q.keyword, 'kw', w); add(q.vector, 'vec', 1);
+  return [...m.values()].sort((a, b) => b.score - a.score);
+}
+function recallAt(list, rel, n) { const top = new Set(list.slice(0, n).map((x) => key(x.h ?? x))); return rel.filter((r) => top.has(r)).length / rel.length; }
+
+function render() {
+  const q = DATA.queries[qi], k = +$('k').value, w = +$('w').value;
+  $('kV').textContent = k; $('wV').textContent = w.toFixed(1);
+  $('queries').innerHTML = DATA.queries.map((x, i) => `<button class="${i === qi ? 'on' : ''}" data-i="${i}" title="${x.type}">${x.query}</button>`).join('');
+  const rel = new Set(q.relevant);
+  const li = (h, extra = '') => `<li class="${rel.has(key(h)) ? 'rel' : ''}">${label(h)} ${rel.has(key(h)) ? '<span class="tag">✓ relevant</span>' : ''}<span class="sc">${extra}</span></li>`;
+  $('kw').innerHTML = q.keyword.length ? q.keyword.slice(0, 8).map((h) => li(h, h.score.toFixed(3))).join('') : '<span class="muted">no keyword match</span>';
+  $('vec').innerHTML = q.vector.slice(0, 8).map((h) => li(h, h.score.toFixed(3))).join('');
+  const fused = fuse(q, k, w);
+  const max = fused[0]?.score || 1;
+  $('fused').innerHTML = fused.slice(0, 8).map((e) => `<li class="${rel.has(key(e.h)) ? 'rel' : ''}">${label(e.h)} ${rel.has(key(e.h)) ? '<span class="tag">✓</span>' : ''}<span class="sc">${e.score.toFixed(4)}</span>
+     <div class="bar"><span style="width:${((e.parts.kw || 0) / max) * 100}%;background:var(--kw)"></span><span style="width:${((e.parts.vec || 0) / max) * 100}%;background:var(--vec)"></span></div>
+     <div class="muted" style="font-size:11px">kw #${e.ranks.kw ?? '–'} · vec #${e.ranks.vec ?? '–'}</div></li>`).join('');
+  const relA = [...rel];
+  const m = (name, list) => `<span class="pill">${name}: recall@3 <b>${(recallAt(list, relA, 3) * 100).toFixed(0)}%</b> · top-1 ${rel.has(key(list[0]?.h ?? list[0] ?? {})) ? '✓' : '✗'}</span>`;
+  $('metrics').innerHTML = m('keyword', q.keyword) + m('vector', q.vector) + m('hybrid', fused);
+  const kwTop = rel.has(key(q.keyword[0] ?? {})), vecTop = rel.has(key(q.vector[0])), hybTop = rel.has(key(fused[0].h));
+  $('note').innerHTML = q.type === 'keyword'
+    ? `<b>Exact identifier query.</b> ${kwTop ? 'Keyword search nails it' : 'Keyword search misses'}${vecTop ? ' and so does vector search' : ', while the small local embedding model ranks a different error section first'}: it blurs codes like <code>E-4290</code> into "some API error". Fusion keeps the exact match near the top.`
+    : q.type === 'paraphrase'
+      ? `<b>Paraphrase.</b> The question shares few words with the answer. ${vecTop ? 'Vector search gets it' : 'Vector search misses'}, keyword search ${kwTop ? 'also gets it' : 'struggles'}. Hybrid ${hybTop ? 'keeps the right section first' : 'still places it in the top 3'}.`
+      : `<b>${q.type} question.</b> Try <code>k = 1</code>: fusion then trusts each list's #1 almost completely. Large <code>k</code> flattens the curve, so agreement between the lists matters more than any single #1.`;
+}
+$('queries').onclick = (e) => { if (e.target.dataset.i) { qi = +e.target.dataset.i; render(); } };
+$('k').oninput = render; $('w').oninput = render;
+render();
+</script>
+</body>
+</html>

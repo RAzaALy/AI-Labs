@@ -4,14 +4,46 @@
     {
       "name": "p2-copilot-reference",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--workspace", "phase-02-llm-apis/project/reference"],
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--workspace",
+        "phase-02-llm-apis/project/reference"
+      ],
       "port": 3020
     },
     {
       "name": "p2-copilot-starter",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--workspace", "phase-02-llm-apis/project/starter"],
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--workspace",
+        "phase-02-llm-apis/project/starter"
+      ],
       "port": 3021
+    },
+    {
+      "name": "p3-docs-chat-reference",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--workspace",
+        "phase-03-rag/project/reference"
+      ],
+      "port": 3030
+    },
+    {
+      "name": "p3-docs-chat-starter",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--workspace",
+        "phase-03-rag/project/starter"
+      ],
+      "port": 3031
     }
   ]
 }

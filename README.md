@@ -13,7 +13,7 @@ A ~130-hour curriculum for an experienced full-stack engineer who is new to AI. 
 |---|---|---|---|
 | Base | [1. How LLMs work](phase-01-how-llms-work/) | 10 | LLM X-ray CLI: tokens, cost, semantic search, a local model with your own sampler |
 | Base | [2. Working with LLM APIs](phase-02-llm-apis/) | 20 | Streaming chat UI with structured output, tool calling, and a token/cost meter |
-| Intermediate | 3. RAG | 22 | "Chat with your docs" with citations, plus a retrieval eval suite |
+| Intermediate | [3. RAG](phase-03-rag/) | 22 | "Chat with your docs" with citations, plus a retrieval eval suite |
 | Intermediate | 4. Agents | 20 | Multi-tool agent that completes real tasks, with human-in-the-loop approvals |
 | Intermediate | 5. MCP | 11 | MCP server over your docs database, used from Claude Code/Desktop and your own agent |
 | Advanced | 6. Local models | 11 | The agent on a local model with hosted fallback (+ optional LoRA) |
@@ -39,10 +39,12 @@ Phases are added one at a time; each phase folder appears when it's built and ve
 node -v            # needs >= 22
 npm install
 cp .env.example .env   # Phase 1 needs nothing; from Phase 2 add a free Gemini key for live runs
+npm run db:up          # from Phase 3: Postgres 18 + pgvector in Docker (port 5433)
 npm run verify         # every lab solution + project acceptance test, on a mock model (offline)
 npm run verify:live    # the same against the provider in .env
 ```
 - Local models download once into `.cache/models` (~700 MB for Phase 1, fp32 for exact results).
+- Phase 3+ need Docker. `npm run db:down` stops the database, and `npm run db:reset` wipes its volume.
 - Project apps (Phase 2+) are npm **workspaces**, so the single `npm install` at the root covers them.
 - Hardware assumed: a laptop CPU with 16 GB RAM. No GPU needed. Phase 6 sizes local models for this.
 
