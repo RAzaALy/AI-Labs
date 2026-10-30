@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent Loop Stepper</title>
+<style>
+  :root { --bg: #f7f7f5; --card: #ffffff; --ink: #1d1d1b; --muted: #6b6b66; --line: #e3e2dc; --accent: #3b5bdb; --accent-soft: #e7ecff; --warn: #c2410c; --good: #15803d; --bad: #dc2626; --tool: #7c3aed; --tool-soft: #f1eafe; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #151514; --card: #1f1f1d; --ink: #ececea; --muted: #a3a39c; --line: #34342f; --accent: #8da2fb; --accent-soft: #262b45; --warn: #fb923c; --good: #4ade80; --bad: #f87171; --tool: #c4b5fd; --tool-soft: #2e2645; } }
+  :root[data-theme="dark"] { --bg: #151514; --card: #1f1f1d; --ink: #ececea; --muted: #a3a39c; --line: #34342f; --accent: #8da2fb; --accent-soft: #262b45; --warn: #fb923c; --good: #4ade80; --bad: #f87171; --tool: #c4b5fd; --tool-soft: #2e2645; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1100px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 1.6rem; margin: 0 0 4px; } h2 { font-size: 1.02rem; margin: 0 0 8px; }
+  p.lead { color: var(--muted); margin: 0 0 16px; max-width: 85ch; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px; margin-bottom: 16px; min-width: 0; }
+  .layout { display: grid; grid-template-columns: 320px minmax(0, 1fr); gap: 16px; }
+  @media (max-width: 860px) { .layout { grid-template-columns: 1fr; } }
+  label.ctl { display: block; font-size: 14px; margin: 10px 0 0; } label.ctl b { float: right; font-variant-numeric: tabular-nums; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  select, button { font: inherit; padding: 6px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--ink); }
+  select { width: 100%; } button { cursor: pointer; } button.primary { background: var(--accent); border-color: var(--accent); color: #fff; } button:disabled { opacity: .45; cursor: default; }
+  .stat { display: inline-block; padding: 4px 10px; border-radius: 999px; background: var(--accent-soft); margin: 2px 4px 2px 0; font-size: 13px; font-variant-numeric: tabular-nums; }
+  .callout { border-left: 3px solid var(--warn); padding: 6px 12px; background: var(--bg); border-radius: 0 8px 8px 0; margin-top: 10px; font-size: 14px; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  svg text { fill: var(--ink); font-family: system-ui, sans-serif; }
+  code { font: 12.5px ui-monospace, Menlo, Consolas, monospace; background: var(--bg); padding: 1px 4px; border-radius: 4px; }
+</style>
+<style>
+  .msgs { display: flex; flex-direction: column; gap: 4px; max-height: 360px; overflow-y: auto; }
+  .m { border-radius: 6px; padding: 4px 8px; font: 12.5px ui-monospace, Menlo, Consolas, monospace; display: flex; justify-content: space-between; gap: 8px; border: 1px solid var(--line); overflow-wrap: anywhere; }
+  .m.sys { background: var(--bg); color: var(--muted); } .m.user { background: var(--accent-soft); } .m.call { background: var(--tool-soft); } .m.result { background: var(--card); } .m.err { border-color: var(--bad); color: var(--bad); }
+  .m.new { outline: 2px solid var(--accent); }
+  .m span:last-child { color: var(--muted); white-space: nowrap; }
+  .conds div { display: flex; justify-content: space-between; font-size: 14px; padding: 4px 0; border-bottom: 1px solid var(--line); }
+  .on { color: var(--good); font-weight: 600; } .fired { color: var(--warn); font-weight: 700; }
+  .bars { display: flex; align-items: flex-end; gap: 6px; height: 140px; border-bottom: 1px solid var(--line); margin-top: 8px; }
+  .bars div { flex: 1; background: var(--accent); border-radius: 4px 4px 0 0; position: relative; min-width: 14px; transition: height .3s; }
+  .bars div.ghost { background: var(--line); }
+  .bars small { position: absolute; top: -18px; left: 50%; transform: translateX(-50%); font-size: 11px; color: var(--muted); white-space: nowrap; }
+</style>
+</head>
+<body>
+<main>
+  <h1>The agent loop, one step at a time</h1>
+  <p class="lead">Each step is one model call. The model asks for tools, your code runs them, the results are appended, and <b>everything</b> is sent again. Step through a real run from Lab 01 (Gemini fixing a degraded API) or two scripted ones, and watch the history, the stop conditions and the bill.</p>
+  <div class="layout">
+    <section class="card">
+      <label class="ctl">Scenario</label>
+      <select id="sc">
+        <option value="live">Live run: fix the degraded api (Lab 01, measured)</option>
+        <option value="recover">Error recovery: wrong id → look it up → retry</option>
+        <option value="runaway">Runaway: never calls done (step cap = 4)</option>
+      </select>
+      <div class="row" style="margin-top:12px">
+        <button id="prev">◀ Back</button><button id="next" class="primary">Next step ▶</button><button id="reset">Reset</button>
+      </div>
+      <h2 style="margin-top:16px">Stop conditions (checked after each step)</h2>
+      <div class="conds" id="conds"></div>
+      <div class="callout" id="note"></div>
+    </section>
+    <section class="card">
+      <h2>What is sent to the model on step <span id="stepNo"></span></h2>
+      <div class="msgs" id="msgs"></div>
+      <h2 style="margin-top:14px">Input tokens billed per step</h2>
+      <div class="bars" id="bars"></div>
+      <div id="stats" style="margin-top:8px"></div>
+    </section>
+  </div>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+// Each step: the call the model made, the result it got back, and the input tokens billed (live numbers from Lab 01).
+const SCENARIOS = {
+  live: { cap: 10, budget: 60000, base: 875, steps: [
+    { call: 'getDeployStatus({service:"api"})', result: '{version:"2026.10.15-2", status:"degraded", errorRatePct:6.4}', inTok: 875 },
+    { call: 'searchHandbook("degraded service rollback incident")', result: '3 sections: Rolling back a bad release…', inTok: 991 },
+    { call: 'searchHandbook("post incident review ticket required SRE")', result: '"…open a post-incident review ticket within 24 hours"', inTok: 1263 },
+    { call: 'rollback({service:"api"})', result: '{version:"2026.10.14-1", status:"healthy"}', inTok: 1545 },
+    { call: 'createTicket("Post-Incident Review: API Service Rollback")', result: '{id:"TCK-1001"}', inTok: 1654 },
+    { call: 'done({outcome:"resolved", summary:"Rolled back api…"})', result: '{acknowledged:true}', inTok: 1905, done: true },
+  ]},
+  recover: { cap: 10, budget: 60000, base: 113, steps: [
+    { call: 'listInvoices({customerId:"Ayesha"})', result: 'ERROR: No customer Ayesha. Use findCustomers(query) to look up the id first.', inTok: 113, err: true },
+    { call: 'findCustomers({query:"Ayesha"})', result: '[{id:"C-101", name:"Ayesha Khan", plan:"Team"}]', inTok: 200 },
+    { call: 'listInvoices({customerId:"C-101"})', result: '[INV-20261003 · 12 days · USD 99 refundable, INV-20260903 · 42 days]', inTok: 287 },
+    { call: 'done({outcome:"resolved"})', result: '{acknowledged:true}', inTok: 425, done: true },
+  ]},
+  runaway: { cap: 4, budget: 60000, base: 120, steps: [
+    { call: 'getDeployStatus({service:"web"})', result: '{status:"healthy"}', inTok: 120 },
+    { call: 'getDeployStatus({service:"web"})', result: '{status:"healthy"}', inTok: 190 },
+    { call: 'getDeployStatus({service:"web"})', result: '{status:"healthy"}', inTok: 260 },
+    { call: 'getDeployStatus({service:"web"})', result: '{status:"healthy"}', inTok: 330 },
+  ]},
+};
+let sc = SCENARIOS.live, i = 0; // i = steps completed
+function render() {
+  const done = sc.steps.slice(0, i);
+  const fired = i > 0 && done.at(-1).done ? 'done' : i >= sc.cap ? 'cap' : null;
+  $('stepNo').textContent = fired ? `${i} (finished)` : `${i + 1}`;
+  const rows = [['sys', 'instructions + 8 tool definitions', '≈700 tok'], ['user', 'task: ' + ($('sc').value === 'live' ? '"Customers report errors from the API… fix it"' : $('sc').value === 'recover' ? '"What can Ayesha get refunded?"' : '"Watch the web service."'), '']];
+  done.forEach((s, k) => {
+    rows.push(['call' + (k === i - 1 ? ' new' : ''), `assistant → ${s.call}`, '']);
+    rows.push([(s.err ? 'result err' : 'result') + (k === i - 1 ? ' new' : ''), `tool → ${s.result}`, '']);
+  });
+  $('msgs').innerHTML = rows.map(([c, t, n]) => `<div class="m ${c}"><span>${t.replace(/</g, '&lt;')}</span><span>${n}</span></div>`).join('');
+  $('msgs').scrollTop = 1e6;
+  const billed = done.reduce((a, s) => a + s.inTok, 0);
+  const max = Math.max(...sc.steps.map((s) => s.inTok));
+  $('bars').innerHTML = sc.steps.map((s, k) => `<div class="${k < i ? '' : 'ghost'}" style="height:${(s.inTok / max) * 100}%">${k < i ? `<small>${s.inTok}</small>` : ''}</div>`).join('');
+  $('stats').innerHTML = `<span class="stat">steps: ${i}</span><span class="stat">input tokens billed: ${billed.toLocaleString()}</span><span class="stat">if context stayed flat: ${(sc.base * i).toLocaleString()}</span>`;
+  $('conds').innerHTML = [
+    ['hasToolCall("done")', fired === 'done' ? 'FIRED' : 'not yet', fired === 'done'],
+    [`isStepCount(${sc.cap})`, `${i} / ${sc.cap}` + (fired === 'cap' ? ' FIRED' : ''), fired === 'cap'],
+    ['tokenBudget(60,000)', `${billed.toLocaleString()} / 60,000`, false],
+  ].map(([n, v, f]) => `<div><span>${n}</span><span class="${f ? 'fired' : 'on'}">${v}</span></div>`).join('');
+  $('note').innerHTML = !i ? 'Press <b>Next step</b>: the model receives the instructions, the tool definitions and the task.'
+    : fired === 'done' ? 'The agent called <code>done</code>: a clean, structured finish. Notice how each step cost more than the one before.'
+    : fired === 'cap' ? 'The model never called <code>done</code>. Without the step cap this loop runs (and bills) forever. Record <i>why</i> a run stopped: max-steps is a failure signal.'
+    : done.at(-1).err ? 'The tool failed, and the error text went back to the model as a normal result. A good error message is the next instruction.'
+    : 'The new tool result is appended to the history. Next step, the model sees everything above again.';
+  $('prev').disabled = i === 0; $('next').disabled = !!fired || i >= sc.steps.length;
+}
+$('next').onclick = () => { i++; render(); };
+$('prev').onclick = () => { i--; render(); };
+$('reset').onclick = () => { i = 0; render(); };
+$('sc').onchange = () => { sc = SCENARIOS[$('sc').value]; i = 0; render(); };
+render();
+</script>
+</body>
+</html>

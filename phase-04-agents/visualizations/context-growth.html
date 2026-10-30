@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent Context Growth</title>
+<style>
+  :root { --bg: #f7f7f5; --card: #ffffff; --ink: #1d1d1b; --muted: #6b6b66; --line: #e3e2dc; --accent: #3b5bdb; --accent-soft: #e7ecff; --warn: #c2410c; --good: #15803d; --bad: #dc2626; --tool: #7c3aed; --tool-soft: #f1eafe; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #151514; --card: #1f1f1d; --ink: #ececea; --muted: #a3a39c; --line: #34342f; --accent: #8da2fb; --accent-soft: #262b45; --warn: #fb923c; --good: #4ade80; --bad: #f87171; --tool: #c4b5fd; --tool-soft: #2e2645; } }
+  :root[data-theme="dark"] { --bg: #151514; --card: #1f1f1d; --ink: #ececea; --muted: #a3a39c; --line: #34342f; --accent: #8da2fb; --accent-soft: #262b45; --warn: #fb923c; --good: #4ade80; --bad: #f87171; --tool: #c4b5fd; --tool-soft: #2e2645; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1100px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 1.6rem; margin: 0 0 4px; } h2 { font-size: 1.02rem; margin: 0 0 8px; }
+  p.lead { color: var(--muted); margin: 0 0 16px; max-width: 85ch; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px; margin-bottom: 16px; min-width: 0; }
+  .layout { display: grid; grid-template-columns: 320px minmax(0, 1fr); gap: 16px; }
+  @media (max-width: 860px) { .layout { grid-template-columns: 1fr; } }
+  label.ctl { display: block; font-size: 14px; margin: 10px 0 0; } label.ctl b { float: right; font-variant-numeric: tabular-nums; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  select, button { font: inherit; padding: 6px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--ink); }
+  select { width: 100%; } button { cursor: pointer; } button.primary { background: var(--accent); border-color: var(--accent); color: #fff; } button:disabled { opacity: .45; cursor: default; }
+  .stat { display: inline-block; padding: 4px 10px; border-radius: 999px; background: var(--accent-soft); margin: 2px 4px 2px 0; font-size: 13px; font-variant-numeric: tabular-nums; }
+  .callout { border-left: 3px solid var(--warn); padding: 6px 12px; background: var(--bg); border-radius: 0 8px 8px 0; margin-top: 10px; font-size: 14px; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  svg text { fill: var(--ink); font-family: system-ui, sans-serif; }
+  code { font: 12.5px ui-monospace, Menlo, Consolas, monospace; background: var(--bg); padding: 1px 4px; border-radius: 4px; }
+</style>
+<style>
+  .chart { width: 100%; height: 260px; }
+  .chart rect.fixed { fill: var(--muted); opacity: .45; } .chart rect.hist { fill: var(--accent); } .chart rect.res { fill: var(--tool); }
+  .chart line.rot { stroke: var(--warn); stroke-dasharray: 4 4; } .chart .axis { stroke: var(--line); }
+  .legend span { display: inline-flex; align-items: center; gap: 4px; margin-right: 12px; font-size: 13px; color: var(--muted); }
+  .legend i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Why agent context grows, and what clearing it buys you</h1>
+  <p class="lead">Every step re-sends instructions + tool definitions + the whole history. Tool results are usually the biggest part. Compare strategies and watch the bill and the size of each step's context. Defaults are close to Lab 01/04: ~700 tokens of tool definitions, ~350-token tool results.</p>
+  <div class="layout">
+    <section class="card">
+      <label class="ctl">Steps in the run <b id="nV"></b></label><input type="range" id="n" min="2" max="40" value="12">
+      <label class="ctl">Instructions + tool definitions <b id="fV"></b></label><input type="range" id="f" min="200" max="6000" step="100" value="900">
+      <label class="ctl">Tokens per tool result <b id="rV"></b></label><input type="range" id="r" min="50" max="4000" step="50" value="350">
+      <label class="ctl">Model output per step (call + args) <b id="oV"></b></label><input type="range" id="o" min="20" max="400" step="10" value="60">
+      <label class="ctl">Strategy</label>
+      <select id="s">
+        <option value="none">Keep everything</option>
+        <option value="clear" selected>Clear tool results older than K steps</option>
+        <option value="summary">Summarise history every N steps</option>
+      </select>
+      <label class="ctl" id="kL">K (steps kept) / N (summary interval) <b id="kV"></b></label><input type="range" id="k" min="1" max="10" value="2">
+      <label class="ctl">Price per 1M input tokens <b id="pV"></b></label><input type="range" id="p" min="0.05" max="5" step="0.05" value="0.3">
+    </section>
+    <section class="card">
+      <svg class="chart" id="chart" viewBox="0 0 700 260"></svg>
+      <div class="legend"><span><i style="background:var(--muted);opacity:.45"></i>instructions + tools</span><span><i style="background:var(--accent)"></i>calls + placeholders + summaries</span><span><i style="background:var(--tool)"></i>full tool results</span><span><i style="background:var(--warn)"></i>32k: where long-context recall starts to slip (illustrative)</span></div>
+      <div id="stats" style="margin-top:8px"></div>
+      <div class="callout" id="note"></div>
+    </section>
+  </div>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const ids = ['n', 'f', 'r', 'o', 'k', 'p'];
+ids.forEach((id) => ($(id).oninput = render)); $('s').onchange = render;
+function context(strategy, n, f, r, o, k) {
+  // Returns, per step, [fixed, history-without-full-results, full results] sent on that step.
+  const steps = [];
+  let summary = 0, summarisedUpTo = 0, extraCalls = 0;
+  for (let s = 1; s <= n; s++) {
+    const prev = s - 1; // completed steps whose call + result are in the history
+    let hist = 60 /* task */, full = 0;
+    if (strategy === 'summary' && prev > 0 && prev % k === 0 && prev > summarisedUpTo) { summary = 150 + 40 * prev; summarisedUpTo = prev; extraCalls++; }
+    for (let j = 1; j <= prev; j++) {
+      if (strategy === 'summary' && j <= summarisedUpTo) continue;
+      hist += o;
+      if (strategy === 'clear' && j <= prev - k) hist += 25; else full += r;
+    }
+    if (strategy === 'summary') hist += summary;
+    steps.push([f, hist, full]);
+  }
+  return { steps, extraCalls };
+}
+function render() {
+  const n = +$('n').value, f = +$('f').value, r = +$('r').value, o = +$('o').value, k = +$('k').value, p = +$('p').value, s = $('s').value;
+  $('nV').textContent = n; $('fV').textContent = f.toLocaleString(); $('rV').textContent = r.toLocaleString(); $('oV').textContent = o; $('kV').textContent = k; $('pV').textContent = '$' + p.toFixed(2);
+  $('k').disabled = s === 'none'; $('kL').style.opacity = s === 'none' ? 0.4 : 1;
+  const cur = context(s, n, f, r, o, k), base = context('none', n, f, r, o, k);
+  const tot = (c) => c.steps.reduce((a, x) => a + x[0] + x[1] + x[2], 0) + c.extraCalls * 1500;
+  const max = Math.max(...base.steps.map((x) => x[0] + x[1] + x[2]), 34000 * (Math.max(...base.steps.map((x) => x[0] + x[1] + x[2])) > 30000 ? 1 : 0), 1);
+  const W = 700, H = 230, bw = (W - 40) / n;
+  let svg = `<line class="axis" x1="30" y1="${H}" x2="${W}" y2="${H}"/>`;
+  cur.steps.forEach(([a, b, c], i) => {
+    const x = 34 + i * bw, h = (v) => (v / max) * (H - 10);
+    let y = H;
+    for (const [v, cls] of [[a, 'fixed'], [b, 'hist'], [c, 'res']]) { y -= h(v); svg += `<rect class="${cls}" x="${x}" y="${y}" width="${Math.max(2, bw - 3)}" height="${h(v)}"/>`; }
+    const ghost = base.steps[i].reduce((q, v) => q + v, 0);
+    if (s !== 'none') svg += `<rect x="${x}" y="${H - h(ghost)}" width="${Math.max(2, bw - 3)}" height="${h(ghost)}" style="fill:none;stroke:var(--muted);stroke-dasharray:2 2"/>`;
+  });
+  if (max >= 32000) { const y = H - (32000 / max) * (H - 10); svg += `<line class="rot" x1="30" y1="${y}" x2="${W}" y2="${y}"/>`; }
+  svg += `<text x="34" y="${H + 20}" font-size="11">step 1</text><text x="${W - 50}" y="${H + 20}" font-size="11">step ${n}</text>`;
+  $('chart').innerHTML = svg;
+  const T = tot(cur), B = tot(base), last = cur.steps.at(-1).reduce((a, v) => a + v, 0);
+  $('stats').innerHTML = `<span class="stat">input tokens billed: ${T.toLocaleString()}</span><span class="stat">vs keep-everything: ${B.toLocaleString()}</span><span class="stat">saved: ${Math.round((1 - T / B) * 100)}%</span><span class="stat">last step context: ${last.toLocaleString()}</span><span class="stat">cost: $${((T / 1e6) * p).toFixed(4)} / run</span><span class="stat">× 10k runs/month: $${((T / 1e6) * p * 1e4).toFixed(0)}</span>`;
+  $('note').innerHTML = s === 'none' ? `Keep-everything grows ~quadratically: step <i>n</i> re-sends n−1 results, so ${n} steps bill ${B.toLocaleString()} tokens, ${(B / (f + 60)).toFixed(1)}× a single call's input.` : s === 'clear' ? `Clearing keeps the calls and the last ${k} step(s) of results. Cheap and safe <b>if</b> the agent saved what it needed. Lab 04 live: clear too early and it re-searches, paying more than it saved. Each rewrite also invalidates the prompt cache from that message on.` : `Summaries cost an extra LLM call each time (counted here as ~1,500 tokens) and lose detail, but they bound the history. Use them for very long runs; check task success, not just tokens.`;
+}
+render();
+</script>
+</body>
+</html>

@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Approval Flow Simulator</title>
+<style>
+  :root { --bg: #f7f7f5; --card: #ffffff; --ink: #1d1d1b; --muted: #6b6b66; --line: #e3e2dc; --accent: #3b5bdb; --accent-soft: #e7ecff; --warn: #c2410c; --good: #15803d; --bad: #dc2626; --tool: #7c3aed; --tool-soft: #f1eafe; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #151514; --card: #1f1f1d; --ink: #ececea; --muted: #a3a39c; --line: #34342f; --accent: #8da2fb; --accent-soft: #262b45; --warn: #fb923c; --good: #4ade80; --bad: #f87171; --tool: #c4b5fd; --tool-soft: #2e2645; } }
+  :root[data-theme="dark"] { --bg: #151514; --card: #1f1f1d; --ink: #ececea; --muted: #a3a39c; --line: #34342f; --accent: #8da2fb; --accent-soft: #262b45; --warn: #fb923c; --good: #4ade80; --bad: #f87171; --tool: #c4b5fd; --tool-soft: #2e2645; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1100px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 1.6rem; margin: 0 0 4px; } h2 { font-size: 1.02rem; margin: 0 0 8px; }
+  p.lead { color: var(--muted); margin: 0 0 16px; max-width: 85ch; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px; margin-bottom: 16px; min-width: 0; }
+  .layout { display: grid; grid-template-columns: 320px minmax(0, 1fr); gap: 16px; }
+  @media (max-width: 860px) { .layout { grid-template-columns: 1fr; } }
+  label.ctl { display: block; font-size: 14px; margin: 10px 0 0; } label.ctl b { float: right; font-variant-numeric: tabular-nums; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  select, button { font: inherit; padding: 6px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--ink); }
+  select { width: 100%; } button { cursor: pointer; } button.primary { background: var(--accent); border-color: var(--accent); color: #fff; } button:disabled { opacity: .45; cursor: default; }
+  .stat { display: inline-block; padding: 4px 10px; border-radius: 999px; background: var(--accent-soft); margin: 2px 4px 2px 0; font-size: 13px; font-variant-numeric: tabular-nums; }
+  .callout { border-left: 3px solid var(--warn); padding: 6px 12px; background: var(--bg); border-radius: 0 8px 8px 0; margin-top: 10px; font-size: 14px; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  svg text { fill: var(--ink); font-family: system-ui, sans-serif; }
+  code { font: 12.5px ui-monospace, Menlo, Consolas, monospace; background: var(--bg); padding: 1px 4px; border-radius: 4px; }
+</style>
+<style>
+  .states { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 6px 0 10px; }
+  .st { padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); font: 12.5px ui-monospace, Menlo, Consolas, monospace; color: var(--muted); }
+  .st.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .st.done { border-color: var(--accent); color: var(--ink); }
+  .st.denied.on { background: var(--bad); border-color: var(--bad); }
+  .log { font: 12.5px ui-monospace, Menlo, Consolas, monospace; display: flex; flex-direction: column; gap: 4px; max-height: 300px; overflow: auto; }
+  .log div { padding: 4px 8px; border-radius: 6px; border: 1px solid var(--line); overflow-wrap: anywhere; }
+  .log .http { background: var(--bg); color: var(--muted); border-style: dashed; }
+  .log .ast { background: var(--tool-soft); } .log .tool { background: var(--card); } .log .human { background: var(--accent-soft); }
+  .card-ask { border: 2px solid var(--warn); border-radius: 10px; padding: 10px; margin-top: 10px; }
+  .world { font-size: 14px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Human-in-the-loop: the life of an approval</h1>
+  <p class="lead">With <code>toolApproval</code>, a risky tool call doesn't run. The request <b>ends</b> with an approval request, the human answers (maybe hours later), and a <b>new</b> request resumes from the saved messages. Try a refund (always needs the billing team), a rollback (auto-approved by policy), and a retried POST.</p>
+  <div class="layout">
+    <section class="card">
+      <label class="ctl">The agent wants to call</label>
+      <select id="tool">
+        <option value="refund">issueRefund(INV-20261003, USD 99)  · policy: user-approval</option>
+        <option value="bigrefund">issueRefund(INV-20261001, USD 399) · policy: user-approval</option>
+        <option value="rollback">rollback(api) · policy: approved (automatic)</option>
+      </select>
+      <div class="row" style="margin-top:12px"><button id="go" class="primary">Send request 1</button><button id="reset">Reset</button></div>
+      <div id="ask"></div>
+      <h2 style="margin-top:14px">The world</h2>
+      <div class="world" id="world"></div>
+      <div class="callout" id="note"></div>
+    </section>
+    <section class="card">
+      <h2>Tool part state (what <code>useChat</code> renders)</h2>
+      <div class="states" id="states"></div>
+      <h2>Messages and HTTP requests</h2>
+      <div class="log" id="log"></div>
+    </section>
+  </div>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const STATES = ['input-streaming', 'input-available', 'approval-requested', 'approval-responded', 'output-available', 'output-denied'];
+const TOOLS = {
+  refund: { call: 'issueRefund({invoiceId:"INV-20261003", amountUSD:99})', human: 'Refund USD 99 to Ayesha Khan · invoice INV-20261003 (12 days old)', auto: false, result: '{id:"RF-1", amountUSD:99}' },
+  bigrefund: { call: 'issueRefund({invoiceId:"INV-20261001", amountUSD:399})', human: 'Refund USD 399 to Northwind Ltd · invoice INV-20261001 (14 days old)', auto: false, result: '{id:"RF-1", amountUSD:399}' },
+  rollback: { call: 'rollback({service:"api"})', human: '', auto: true, result: '{version:"2026.10.14-1", status:"healthy"}' },
+};
+let s; // simulation state
+function reset() { s = { phase: 'idle', state: -1, log: [], refunds: 0, rolledBack: false, approved: null, posts: 0, executedKeys: new Set() }; render(); }
+const add = (cls, t) => s.log.push([cls, t]);
+function execute(t) {
+  const key = 'call_7'; // the idempotency key is the tool call id, not anything the model writes
+  if (s.executedKeys.has(key)) { add('tool', `tool-result ${t.result.replace('}', ', replayed:true}')}  ← idempotency key call_7 already used: no second refund`); return; }
+  s.executedKeys.add(key);
+  if ($('tool').value === 'rollback') s.rolledBack = true; else s.refunds++;
+  add('tool', `tool-result (call_7) ${t.result}`);
+}
+$('go').onclick = () => {
+  const t = TOOLS[$('tool').value];
+  if (s.phase === 'idle') {
+    s.posts++;
+    add('http', `POST /api/chat #${s.posts}  {messages:[user: "…"]}`);
+    add('ast', `assistant: tool-call call_7 ${t.call}`);
+    if (t.auto) { s.state = 4; add('ast', `tool-approval-request (isAutomatic: true → approved by policy)`); execute(t); add('ast', 'assistant: "Rolled back api to 2026.10.14-1."'); add('http', `response #${s.posts} finished · no human involved`); s.phase = 'done'; }
+    else { s.state = 2; add('ast', 'tool-approval-request {approvalId:"apr_1", toolCallId:"call_7"}'); add('http', `response #${s.posts} finished · status "ready": the server is NOT waiting; messages are persisted`); s.phase = 'asking'; }
+  } else if (s.phase === 'answered' || s.phase === 'done-ret') {
+    s.posts++;
+    add('http', `POST /api/chat #${s.posts}  {messages:[…, tool-approval-response{approvalId:"apr_1", approved:${s.approved}}]}${s.phase === 'done-ret' ? '  ← the browser retried the same request' : ''}`);
+    if (s.approved) { execute(t); s.state = 4; add('ast', 'assistant: "Done: refund issued."'); }
+    else { s.state = 5; add('tool', 'tool-result (call_7) {type:"execution-denied", reason:"above fast-track limit"}'); add('ast', 'assistant: "Billing declined the fast-track refund; I opened ticket TCK-1001 for a manual review."'); }
+    add('http', `response #${s.posts} finished`);
+    s.phase = 'done-ret';
+  }
+  render();
+};
+function answer(ok) { s.approved = ok; s.state = 3; add('human', `human ${ok ? 'APPROVED' : 'DENIED'} apr_1 (billing team, 2 hours later)`); s.phase = 'answered'; render(); }
+$('reset').onclick = reset; $('tool').onchange = reset;
+function render() {
+  $('states').innerHTML = STATES.map((n, i) => { const shown = i === 5 ? s.state === 5 : i <= s.state && !(i === 4 && s.state === 5) && !(s.state === 4 && TOOLS[$('tool').value].auto && (i === 2 || i === 3)); return `<span class="st ${i === 5 ? 'denied' : ''} ${i === s.state ? 'on' : shown ? 'done' : ''}">${n}</span>`; }).join('<span class="muted">→</span>');
+  $('log').innerHTML = s.log.map(([c, t]) => `<div class="${c}">${t.replace(/</g, '&lt;')}</div>`).join('') || '<span class="muted">Nothing sent yet.</span>';
+  $('log').scrollTop = 1e6;
+  const t = TOOLS[$('tool').value];
+  $('ask').innerHTML = s.phase === 'asking' ? `<div class="card-ask"><b>Approval needed</b><div>${t.human}</div><div class="muted">Show the human the consequence, not raw JSON.</div><div class="row" style="margin-top:8px"><button class="primary" onclick="answer(true)">Approve</button><button onclick="answer(false)">Deny</button></div></div>` : '';
+  $('go').textContent = s.phase === 'idle' ? 'Send request 1' : s.phase === 'answered' ? `Send request ${s.posts + 1} (resume)` : s.phase === 'done-ret' && !t.auto ? 'Retry the same POST' : 'Done';
+  $('go').disabled = s.phase === 'asking' || s.phase === 'done';
+  $('world').innerHTML = `<span class="stat">refunds issued: ${s.refunds}</span><span class="stat">api: ${s.rolledBack ? 'healthy (rolled back)' : 'degraded'}</span><span class="stat">HTTP requests: ${s.posts}</span>`;
+  $('note').innerHTML = s.phase === 'idle' ? 'The policy lives in code: <code>toolApproval: { issueRefund: "user-approval", rollback: "approved" }</code>. No prompt can change it.'
+    : s.phase === 'asking' ? 'Request 1 is over. Nothing runs until a human answers, and the answer arrives as a <b>new</b> request carrying the whole message history.'
+    : s.phase === 'answered' ? 'The approval response is just another message part. Resuming re-runs the loop from the saved messages: the SDK executes the approved call before calling the model again.'
+    : s.phase === 'done' ? 'Auto-approved by policy: recorded (isAutomatic), never shown to a human. Approve by risk, or people learn to click "yes" without reading.'
+    : 'Click <b>Retry the same POST</b>: the tool call id is the idempotency key, so a replayed approval can never refund twice (Lab 05, check 6).';
+}
+reset();
+</script>
+</body>
+</html>

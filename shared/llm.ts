@@ -7,6 +7,8 @@
 //   2. otherwise the first provider that has an API key, in this order: google → groq → openrouter → anthropic → openai
 //   3. otherwise 'mock'
 import 'dotenv/config';
+import type { LanguageModelV4 } from '@ai-sdk/provider';
+import { rateLimited } from './rate-limit.ts';
 import type { EmbeddingModel, LanguageModel } from 'ai';
 import { google } from '@ai-sdk/google';
 import { anthropic } from '@ai-sdk/anthropic';
@@ -78,7 +80,9 @@ export function getModel(opts: { tier?: Tier; provider?: ProviderName; modelId?:
     groq: () => groq(modelId),
     openrouter: () => createOpenRouter({ apiKey: process.env.OPENROUTER_API_KEY })(modelId),
   }[provider]();
-  return { model, provider, modelId };
+  // LLM_RPM paces requests client-side (0 = off). Default for Gemini's free tier: 14/min, just under its 15/min limit.
+  const rpm = Number(process.env.LLM_RPM ?? (provider === 'google' ? 14 : 0));
+  return { model: rpm > 0 ? rateLimited(model as LanguageModelV4, rpm) : model, provider, modelId };
 }
 
 /** Embedding model for the active provider (Gemini only for now; mock otherwise). */

@@ -54,6 +54,9 @@ Primary sources first: official docs, lab engineering blogs and original authors
 | [AI SDK docs](https://ai-sdk.dev/docs) **TS** | The framework used from Phase 2 on. | 2–8 |
 | [MCP specification (2026-07-28)](https://modelcontextprotocol.io/specification/2026-07-28) · [MCP Registry](https://registry.modelcontextprotocol.io/) | The protocol itself, and where servers are published. | 5 |
 | [pgvector](https://github.com/pgvector/pgvector) | Index types (HNSW/IVFFlat), iterative scans, tuning. | 3, 8 |
+| [AI SDK: Agents](https://ai-sdk.dev/docs/agents/overview) · [Loop control](https://ai-sdk.dev/docs/agents/loop-control) **TS** | `ToolLoopAgent`, `stopWhen`, `prepareStep`: the agent API used from Phase 4 on. | 4, 8 |
+| [Anthropic: Writing effective tools for agents](https://www.anthropic.com/engineering/writing-tools-for-agents) · [Effective context engineering](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents) | Tool design and context management from the team that trains the models. | 4, 5 |
+| [Simon Willison: The lethal trifecta](https://simonwillison.net/2025/Jun/16/the-lethal-trifecta/) | The threat model every agent with tools needs. | 4, 7 |
 | [Supabase: Hybrid search](https://supabase.com/docs/guides/ai/hybrid-search) | Full-text + pgvector fused with RRF in one SQL function. The pattern behind Lab 03. | 3 |
 | [Pinecone: Chunking strategies](https://www.pinecone.io/learn/chunking-strategies/) | Survey of fixed, structure-aware, semantic and contextual chunking. | 3 |
 | [Jason Liu: Levels of complexity, RAG applications](https://jxnl.co/writing/2024/02/28/levels-of-complexity-rag-applications/) | A staged map from a basic pipeline to observability and evals. | 3, 7 |
@@ -91,6 +94,7 @@ Read the abstract, the intro and the figures. That's enough unless you're curiou
 | [Lost in the Middle (2023)](https://arxiv.org/abs/2307.03172) | Models use information at the start and end of long contexts far better than the middle. That's why context placement matters. | B | 1, 3 |
 | [ReAct (2022)](https://arxiv.org/abs/2210.03629) | Interleaving reasoning and tool actions in a loop beats either alone. The blueprint of today's agent loop. | I | 4 |
 | [LoRA (2021)](https://arxiv.org/abs/2106.09685) | Fine-tune by training tiny low-rank adapter matrices instead of all weights, at a fraction of the memory. The default way to fine-tune. | A | 6 |
+| [τ-bench (2024)](https://arxiv.org/abs/2406.12045) | Tool-agent-user benchmark that introduced pass^k: strong models were far less reliable over repeated trials than single runs suggested. | I | 4, 7 |
 | [Indirect Prompt Injection (2023)](https://arxiv.org/abs/2302.12173) | Retrieved or tool content can hijack an LLM app, which turns every data source into an attack surface. Essential reading before shipping agents. | I | 7 |
 | [Judging LLM-as-a-Judge (2023)](https://arxiv.org/abs/2306.05685) | Strong LLMs agree with human preferences ~80% of the time, but have position, verbosity and self-preference biases. How to use judges carefully. | I | 7 |
 

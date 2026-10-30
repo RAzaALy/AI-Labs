@@ -14,7 +14,7 @@ A ~130-hour curriculum for an experienced full-stack engineer who is new to AI. 
 | Base | [1. How LLMs work](phase-01-how-llms-work/) | 10 | LLM X-ray CLI: tokens, cost, semantic search, a local model with your own sampler |
 | Base | [2. Working with LLM APIs](phase-02-llm-apis/) | 20 | Streaming chat UI with structured output, tool calling, and a token/cost meter |
 | Intermediate | [3. RAG](phase-03-rag/) | 22 | "Chat with your docs" with citations, plus a retrieval eval suite |
-| Intermediate | 4. Agents | 20 | Multi-tool agent that completes real tasks, with human-in-the-loop approvals |
+| Intermediate | [4. Agents](phase-04-agents/) | 20 | Multi-tool agent that completes real tasks, with human-in-the-loop approvals |
 | Intermediate | 5. MCP | 11 | MCP server over your docs database, used from Claude Code/Desktop and your own agent |
 | Advanced | 6. Local models | 11 | The agent on a local model with hosted fallback (+ optional LoRA) |
 | Advanced | 7. Production | 16 | Eval + tracing harness wired into CI, with guardrails and cost controls |

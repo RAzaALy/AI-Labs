@@ -52,7 +52,21 @@ Tick items as you finish them (`[x]`). A phase is done when its checkpoint in [R
 - [ ] Senior checklist in the phase README: every box ticked
 
 ## Phase 4: Agents (~20 h)
-_Unlocks when the phase is published._
+- [ ] Read first: Building effective agents · AI SDK agents + loop control · Writing tools for agents · Context engineering · The lethal trifecta
+- [ ] Theory: 01 what an agent is · 02 the loop · 03 workflow patterns · 04 tool design · 05 context & memory · 06 safety & HITL · 07 evaluating agents
+- [ ] Visualizations: agent loop · workflow patterns · context growth · approval flow · pass^k
+- [ ] Lab 01 ToolLoopAgent: green · live run fixed the api and filed the ticket
+- [ ] Lab 02 workflow patterns: green · evaluator-optimizer rounds observed
+- [ ] Lab 03 tool design: green · bad vs good toolset compared live
+- [ ] Lab 04 context management: green · compaction measured with success rate, not just tokens
+- [ ] Lab 05 human-in-the-loop: green · approval, denial and replay understood
+- [ ] Lab 06 agent evals: green · your own pass^3 table recorded
+- [ ] Project Ops Copilot: AC1–AC12 pass on `starter` (mock) **and** `LIVE=1`
+- [ ] `npm run eval` run live; failures read and explained
+- [ ] Clicked through the UI: approve, deny, world panel and audit log; console clean
+- [ ] Project self-review rubric ≥ 2 in every row
+- [ ] Quiz ≥ 8/10 · interview questions practised
+- [ ] Senior checklist in the phase README: every box ticked
 
 ## Phase 5: MCP (~11 h)
 _Unlocks when the phase is published._

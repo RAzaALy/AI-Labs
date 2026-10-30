@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Workflow Patterns Explorer</title>
+<style>
+  :root { --bg: #f7f7f5; --card: #ffffff; --ink: #1d1d1b; --muted: #6b6b66; --line: #e3e2dc; --accent: #3b5bdb; --accent-soft: #e7ecff; --warn: #c2410c; --good: #15803d; --bad: #dc2626; --tool: #7c3aed; --tool-soft: #f1eafe; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #151514; --card: #1f1f1d; --ink: #ececea; --muted: #a3a39c; --line: #34342f; --accent: #8da2fb; --accent-soft: #262b45; --warn: #fb923c; --good: #4ade80; --bad: #f87171; --tool: #c4b5fd; --tool-soft: #2e2645; } }
+  :root[data-theme="dark"] { --bg: #151514; --card: #1f1f1d; --ink: #ececea; --muted: #a3a39c; --line: #34342f; --accent: #8da2fb; --accent-soft: #262b45; --warn: #fb923c; --good: #4ade80; --bad: #f87171; --tool: #c4b5fd; --tool-soft: #2e2645; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1100px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 1.6rem; margin: 0 0 4px; } h2 { font-size: 1.02rem; margin: 0 0 8px; }
+  p.lead { color: var(--muted); margin: 0 0 16px; max-width: 85ch; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px; margin-bottom: 16px; min-width: 0; }
+  .layout { display: grid; grid-template-columns: 320px minmax(0, 1fr); gap: 16px; }
+  @media (max-width: 860px) { .layout { grid-template-columns: 1fr; } }
+  label.ctl { display: block; font-size: 14px; margin: 10px 0 0; } label.ctl b { float: right; font-variant-numeric: tabular-nums; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  select, button { font: inherit; padding: 6px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--ink); }
+  select { width: 100%; } button { cursor: pointer; } button.primary { background: var(--accent); border-color: var(--accent); color: #fff; } button:disabled { opacity: .45; cursor: default; }
+  .stat { display: inline-block; padding: 4px 10px; border-radius: 999px; background: var(--accent-soft); margin: 2px 4px 2px 0; font-size: 13px; font-variant-numeric: tabular-nums; }
+  .callout { border-left: 3px solid var(--warn); padding: 6px 12px; background: var(--bg); border-radius: 0 8px 8px 0; margin-top: 10px; font-size: 14px; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  svg text { fill: var(--ink); font-family: system-ui, sans-serif; }
+  code { font: 12.5px ui-monospace, Menlo, Consolas, monospace; background: var(--bg); padding: 1px 4px; border-radius: 4px; }
+</style>
+<style>
+  .tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+  .tabs button.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .gantt { position: relative; margin-top: 8px; }
+  .lane { display: flex; align-items: center; gap: 8px; height: 30px; }
+  .lane .name { width: 120px; font-size: 12.5px; color: var(--muted); text-align: right; flex: none; }
+  .lane .track { position: relative; flex: 1; height: 22px; background: var(--bg); border-radius: 4px; }
+  .blk { position: absolute; top: 0; height: 22px; border-radius: 4px; color: #fff; font-size: 11px; display: flex; align-items: center; justify-content: center; overflow: hidden; white-space: nowrap; }
+  .blk.llm { background: var(--accent); } .blk.code { background: var(--good); } .blk.tool { background: var(--tool); }
+  dl { display: grid; grid-template-columns: 86px 1fr; gap: 4px 10px; font-size: 14px; margin: 10px 0 0; } dt { color: var(--muted); }
+  svg.diag { width: 100%; height: 150px; }
+  svg.diag rect { fill: var(--card); stroke: var(--line); } svg.diag rect.llm { fill: var(--accent-soft); stroke: var(--accent); } svg.diag rect.code { stroke: var(--good); } svg.diag rect.tool { fill: var(--tool-soft); stroke: var(--tool); }
+  svg.diag line, svg.diag path { stroke: var(--muted); fill: none; marker-end: url(#arr); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Workflow patterns vs an agent</h1>
+  <p class="lead">Five workflows where <b>your code</b> decides the path, and the agent, where the <b>model</b> does. Pick one to see its shape, how many calls it makes, and how long a run takes. Workflows have a fixed, predictable cost; an agent's depends on what it decides.</p>
+  <div class="tabs" id="tabs"></div>
+  <div class="layout">
+    <section class="card">
+      <label class="ctl">Latency per LLM call <b id="lV"></b></label><input type="range" id="lat" min="300" max="5000" step="100" value="1000">
+      <label class="ctl">Evaluator rounds until pass <b id="rV"></b></label><input type="range" id="rounds" min="1" max="3" value="2">
+      <label class="ctl">Agent steps the model chooses <b id="sV"></b></label><input type="range" id="steps" min="2" max="12" value="6">
+      <dl id="facts"></dl>
+    </section>
+    <section class="card">
+      <svg class="diag" id="diag" viewBox="0 0 700 150"><defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" style="fill:var(--muted);stroke:none"/></marker></defs><g id="dg"></g></svg>
+      <h2>Timeline of one run</h2>
+      <div class="gantt" id="gantt"></div>
+      <div id="stats" style="margin-top:10px"></div>
+      <div class="callout" id="note"></div>
+    </section>
+  </div>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const P = {
+  chain: { name: 'Prompt chaining', use: 'Fixed stages: outline → draft → polish.', risk: 'An early stage error propagates; add code checks (gates) between stages.', lab: '-',
+    nodes: [['Input', 'code'], ['LLM: outline', 'llm'], ['gate (code)', 'code'], ['LLM: draft', 'llm'], ['LLM: polish', 'llm']],
+    run: (L) => [['outline', 0, L, 'llm'], ['gate', L, 60, 'code'], ['draft', L + 60, L, 'llm'], ['polish', 2 * L + 60, L, 'llm']].map((x) => ['chain', ...x]) },
+  route: { name: 'Routing', use: 'Inputs fall into categories that need different prompts, tools or models.', risk: 'Misroutes. Measure the classifier (Lab 02: 4/4 on Gemini).', lab: 'Lab 02 · route()',
+    nodes: [['Message', 'code'], ['LLM: classify', 'llm'], ['billing | incident | general', 'code'], ['LLM: handler', 'llm']],
+    run: (L) => [['router', 'classify', 0, L * 0.5, 'llm'], ['handler', 'billing handler', L * 0.5, L, 'llm']] },
+  parallel: { name: 'Parallelisation (voting)', use: 'Independent subtasks or several opinions (accuracy, tone, safety reviewers).', risk: 'Cost is the sum of calls; fan-out hits rate limits.', lab: 'Lab 02 · parallelReview()',
+    nodes: [['Draft', 'code'], ['LLM: accuracy', 'llm'], ['LLM: tone', 'llm'], ['LLM: safety', 'llm'], ['vote (code)', 'code']], par: true,
+    run: (L) => [['reviewer 1', 'accuracy', 0, L, 'llm'], ['reviewer 2', 'tone', 0, L * 0.9, 'llm'], ['reviewer 3', 'safety', 0, L * 1.1, 'llm'], ['code', 'majority', L * 1.1, 40, 'code']] },
+  orch: { name: 'Orchestrator-workers', use: 'Subtasks only known at run time, each self-contained.', risk: 'Bad plans; workers duplicating each other. Cap the subtasks.', lab: 'Lab 02 · orchestratorWorkers()',
+    nodes: [['Goal', 'code'], ['LLM: plan', 'llm'], ['worker × N', 'llm'], ['LLM: synthesise', 'llm']],
+    run: (L) => [['orchestrator', 'plan', 0, L, 'llm'], ['worker 1', 'email', L, L, 'llm'], ['worker 2', 'status page', L, L * 1.2, 'llm'], ['worker 3', 'internal note', L, L * 0.8, 'llm'], ['orchestrator', 'synthesise', L * 2.2, L, 'llm']] },
+  evalopt: { name: 'Evaluator-optimizer', use: 'Clear criteria, and feedback measurably improves the output.', risk: 'Never converging. ALWAYS cap the rounds (Lab 02 live: one run failed all 3).', lab: 'Lab 02 · evaluatorOptimizer()',
+    nodes: [['Task', 'code'], ['LLM: draft', 'llm'], ['LLM: review', 'llm'], ['pass? (code)', 'code'], ['LLM: revise', 'llm']],
+    run: (L, R) => { const out = [['writer', 'draft', 0, L, 'llm']]; let t = L; for (let r = 1; r <= R; r++) { out.push(['reviewer', `review ${r}`, t, L * 0.6, 'llm']); t += L * 0.6; if (r < R) { out.push(['writer', `revise ${r}`, t, L, 'llm']); t += L; } } return out; } },
+  agent: { name: 'Agent (tool loop)', use: 'Open-ended tasks where the steps depend on what earlier steps found.', risk: 'Variable cost and latency, compounding errors. Needs step/token caps, approvals and pass^k evals.', lab: 'Labs 01, 05, 06',
+    nodes: [['Goal', 'code'], ['LLM: decide', 'llm'], ['tool', 'tool'], ['…repeat…', 'code'], ['done', 'code']],
+    run: (L, R, S) => { const out = []; let t = 0; for (let s = 1; s <= S; s++) { const l = L * (0.8 + s * 0.08); out.push(['model', `step ${s}`, t, l, 'llm']); t += l; if (s < S) { out.push(['tools', 'tool', t, 120, 'tool']); t += 120; } } return out; } },
+};
+let cur = 'route';
+$('tabs').innerHTML = Object.entries(P).map(([k, p]) => `<button data-k="${k}">${p.name}</button>`).join('');
+$('tabs').onclick = (e) => { if (e.target.dataset.k) { cur = e.target.dataset.k; render(); } };
+['lat', 'rounds', 'steps'].forEach((id) => ($(id).oninput = render));
+function diagram(p) {
+  const n = p.nodes.length, w = 120, gap = (700 - n * w) / (n - 1 || 1);
+  if (p.par) {
+    const [a, b, c, d, e] = p.nodes;
+    const box = (x, y, [t, k]) => `<rect class="${k}" x="${x}" y="${y}" width="${w}" height="32" rx="6"/><text x="${x + w / 2}" y="${y + 20}" text-anchor="middle" font-size="12">${t}</text>`;
+    return box(10, 59, a) + [b, c, d].map((nd, i) => box(290, 8 + i * 50, nd)).join('') + box(570, 59, e) + [24, 74, 124].map((y) => `<path d="M130,75 L290,${y}"/><path d="M410,${y} L570,75"/>`).join('');
+  }
+  return p.nodes.map(([t, k], i) => { const x = i * (w + gap); return `<rect class="${k}" x="${x}" y="59" width="${w}" height="32" rx="6"/><text x="${x + w / 2}" y="79" text-anchor="middle" font-size="12">${t}</text>` + (i < n - 1 ? `<line x1="${x + w}" y1="75" x2="${x + w + gap}" y2="75"/>` : ''); }).join('') + (cur === 'agent' ? `<path d="M${3 * (w + gap) + 60},59 C${3 * (w + gap) + 60},15 ${1 * (w + gap) + 60},15 ${1 * (w + gap) + 60},57"/>` : '') + (cur === 'evalopt' ? `<path d="M${4 * (w + gap) + 60},91 C${4 * (w + gap) + 60},140 ${2 * (w + gap) + 60},140 ${2 * (w + gap) + 60},93"/>` : '');
+}
+function render() {
+  const L = +$('lat').value, R = +$('rounds').value, S = +$('steps').value, p = P[cur];
+  $('lV').textContent = (L / 1000).toFixed(1) + ' s'; $('rV').textContent = R; $('sV').textContent = S;
+  document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.k === cur));
+  $('dg').innerHTML = diagram(p);
+  const blocks = p.run(L, R, S), total = Math.max(...blocks.map((b) => b[2] + b[3])), lanes = [...new Set(blocks.map((b) => b[0]))];
+  $('gantt').innerHTML = lanes.map((ln) => `<div class="lane"><div class="name">${ln}</div><div class="track">${blocks.filter((b) => b[0] === ln).map((b) => `<div class="blk ${b[4]}" style="left:${(b[2] / total) * 100}%;width:${(b[3] / total) * 100}%">${b[1]}</div>`).join('')}</div></div>`).join('');
+  const calls = blocks.filter((b) => b[4] === 'llm').length, serial = blocks.filter((b) => b[4] === 'llm').reduce((a, b) => a + b[3], 0);
+  $('stats').innerHTML = `<span class="stat">LLM calls: ${calls}</span><span class="stat">wall time: ${(total / 1000).toFixed(1)} s</span><span class="stat">sum of LLM call time: ${(serial / 1000).toFixed(1)} s</span>`;
+  $('facts').innerHTML = `<dt>Use when</dt><dd>${p.use}</dd><dt>Watch out</dt><dd>${p.risk}</dd><dt>In the course</dt><dd>${p.lab}</dd>`;
+  $('note').innerHTML = cur === 'agent' ? `The number of steps is the <b>model's</b> choice, so cost and latency are only known afterwards. Move the "agent steps" slider: that's the variance you budget for.` : cur === 'parallel' || cur === 'orch' ? `Parallel calls: wall time ≈ the slowest call, not the sum. Lab 02 measured 312 ms for three 300 ms reviewers.` : `A workflow: the same number of calls every run, so you can unit-test it and quote its cost.`;
+}
+render();
+</script>
+</body>
+</html>

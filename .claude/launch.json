@@ -44,6 +44,28 @@
         "phase-03-rag/project/starter"
       ],
       "port": 3031
+    },
+    {
+      "name": "p4-ops-copilot-reference",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--workspace",
+        "phase-04-agents/project/reference"
+      ],
+      "port": 3040
+    },
+    {
+      "name": "p4-ops-copilot-starter",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--workspace",
+        "phase-04-agents/project/starter"
+      ],
+      "port": 3041
     }
   ]
 }

@@ -5,6 +5,7 @@ Short definitions, with a web-engineering analogy where one helps. The phase whe
 | Term | Meaning | Web analogy / note |
 |---|---|---|
 | **Agent** [4] | An LLM in a loop that chooses tools, observes results, and decides the next step until a goal or stop condition. | An event loop with a planner deciding the next handler |
+| **Agent-computer interface (ACI)** [4] | The tools as the model sees them: names, descriptions, schemas, outputs and errors. Designed for the task, not the database. | API design for a client that only reads your OpenAPI spec |
 | **ANN (approximate nearest neighbour)** [3] | Finding *almost* the closest vectors fast by searching an index (e.g. HNSW) instead of comparing against every vector. Trades a little recall for big speed-ups. | A cache that is usually right; measure how often (recall vs exact search) |
 | **Attention** [1] | Mechanism where each token computes a weighted blend of earlier tokens' values, weighted by query·key match. | A soft key-value lookup / a fuzzy join |
 | **Attention sink** [1] | Heads that park weight on the first token when nothing else is relevant (softmax must sum to 1). | |
@@ -17,6 +18,7 @@ Short definitions, with a web-engineering analogy where one helps. The phase whe
 | **Chat template** [1] | The string format (with special tokens like `<\|im_start\|>`) that a messages array is rendered into. | Serialization of a structured request into the wire format |
 | **Chunking** [3] | Splitting documents into retrievable pieces before embedding. | Choosing the granularity of index entries |
 | **Citation validation** [3] | Checking after generation that every cited source number exists and that a factual answer cites something; problems are flagged, not hidden. | Server-side validation of client input, applied to model output |
+| **Compaction / tool-result clearing** [4] | Shrinking an agent's history: replace old tool outputs with placeholders, or summarise older turns, so each step re-sends less. | Pagination + cache instead of sending the whole history every request |
 | **Constrained decoding** [2] | Sampling where tokens that would violate a schema/grammar are masked, guaranteeing parseable output. | A typed RPC that cannot serialize an invalid message |
 | **Context rot / lost in the middle** [1] | Quality drops as context grows; facts in the middle of long prompts are recalled worst. | |
 | **Context window** [1] | Max tokens per request, input + output combined. | Request payload budget, response included |
@@ -27,6 +29,7 @@ Short definitions, with a web-engineering analogy where one helps. The phase whe
 | **Embedding (token)** [1] | The learned vector for each vocabulary id inside an LLM (first layer). | A foreign-key lookup into a table of vectors |
 | **Entropy** [1] | Uncertainty of a distribution in bits; 2^H ≈ number of "effective choices". | |
 | **Eval** [7] | A repeatable test that scores model/system outputs against expectations. | Tests for nondeterministic code |
+| **Evaluator-optimizer** [4] | Workflow: one call drafts, another critiques against criteria, the first revises, up to a capped number of rounds. | A CI loop: build → test → fix, with a retry limit |
 | **Explicit vs implicit caching** [2] | Explicit: you mark cacheable prefixes (guaranteed within TTL, write premium). Implicit: provider caches automatically (best-effort). | Cache-Control you set vs a CDN's heuristic caching |
 | **Few-shot prompting** [2] | Including worked input→output examples in the prompt. | Unit tests embedded in the spec |
 | **Fine-tuning / LoRA** [6] | Further training on your data. LoRA trains small adapter matrices instead of all weights. | A patch build on top of a release artifact |
@@ -39,10 +42,12 @@ Short definitions, with a web-engineering analogy where one helps. The phase whe
 | **HNSW** [3] | Hierarchical Navigable Small World: a layered graph index for ANN search. `m` = links per node, `ef_construction` = build effort, `ef_search` = query effort (recall vs latency). | Skip lists, generalised to a graph of neighbours |
 | **Human-in-the-loop approval** [2, 4] | Requiring a person to approve a tool call before it executes. | A manual approval gate in a deploy pipeline |
 | **Hybrid search** [3] | Combining keyword (BM25/full-text) and vector search, often fused with RRF. | |
+| **Idempotency key** [4] | A stable id for a side effect, so retries and replays execute it once. For agents: derived from the tool call id, never written by the model. | `Idempotency-Key` header on payment APIs |
 | **Idempotent ingestion** [3] | Re-running ingestion produces the same index: unchanged documents are skipped by content hash, changed ones replaced atomically, deleted ones removed. | `rsync` / a declarative migration, not a one-off import script |
 | **Inference** [1] | Running a trained model to produce outputs; weights frozen. | Running the binary in production |
 | **JSON mode** [2] | Guarantees syntactically valid JSON, but not your schema. | `Content-Type: application/json` without validation |
 | **KV cache** [1] | Stored keys/values of processed tokens so each new token doesn't recompute the prefix. | Memoisation |
+| **Lethal trifecta** [4] | An agent with private data access + exposure to untrusted content + a way to communicate externally can be injected into exfiltrating data. Remove a leg. | XSS + session cookie + open redirect, as a combination to break |
 | **Logits** [1] | Raw, unnormalized scores over the vocabulary for the next token. | Ranked search results with scores |
 | **MCP (Model Context Protocol)** [5] | Open protocol for exposing tools, resources and prompts to AI hosts. | LSP for AI tools / a USB-C port for context |
 | **Mixture of Experts (MoE)** [1] | Architecture where only some "expert" sub-networks run per token. | Routing requests to a subset of services |
@@ -50,9 +55,12 @@ Short definitions, with a web-engineering analogy where one helps. The phase whe
 | **MRR (mean reciprocal rank)** [3] | Average of 1/rank of the first relevant result per query. 1.0 = always first. | "How far down the page is the first good result?" |
 | **nDCG** [3] | Normalised discounted cumulative gain: a ranking score that rewards relevant results more the higher they appear, and supports graded relevance. | Search-ranking quality as used by web search teams |
 | **OpenAI-compatible API** [2] | The `/chat/completions` wire format many providers accept (Groq, OpenRouter, Ollama, vLLM, Gemini). | A de facto standard protocol |
+| **Orchestrator-workers** [4] | Workflow: an LLM plans subtasks at run time, workers handle them (often in parallel), a final call synthesises. | A job queue with a dynamic planner |
+| **pass@k / pass^k** [4] | pass@k: at least one of k attempts succeeds. pass^k: all k succeed. pass^k is the reliability users experience. | "Works on retry" vs "works every time" (flaky tests) |
 | **pgvector** [3] | Postgres extension adding `vector`/`halfvec` types, distance operators (`<=>` cosine) and HNSW/IVFFlat indexes. | Vectors as just another indexed column, next to your relational data |
 | **Post-training** [1] | SFT + preference/RL stages that turn a base model into an assistant. | |
 | **Prefill** [1] | Processing the whole prompt in parallel before the first output token. Drives TTFT. | |
+| **prepareStep** [4] | AI SDK hook that runs before each agent step and can change the model, active tools, tool choice, instructions or messages for that step. | Per-request middleware |
 | **Pre-training** [1] | Next-token prediction over a huge corpus; produces the base model. | The expensive build step |
 | **Prompt caching** [2] | Provider-side reuse of a previously processed prompt prefix at a discount. | A CDN cache for the prefix of your request |
 | **Prompt injection** [7] | Untrusted content containing instructions that the model follows. | Like SQL injection, but no reliable escaping exists |
@@ -65,12 +73,14 @@ Short definitions, with a web-engineering analogy where one helps. The phase whe
 | **Residual stream** [1] | The running per-token vector each block adds its output onto. | A request context object enriched by middleware |
 | **Retry-After** [2] | Response header telling the client how long to wait before retrying (429/503). | Same as in HTTP generally: honour it |
 | **RoPE** [1] | Rotary position embeddings: encode position by rotating query/key vectors. | |
+| **Routing** [4] | Workflow: classify the input once, then hand it to a specialised prompt, model or tool set. | An API gateway |
 | **RRF (reciprocal rank fusion)** [3] | Merges ranked lists by summing 1/(k + rank) per item (k≈60). Uses ranks only, so no score normalisation between systems. | Merging results from two search backends by position, not by their incomparable scores |
 | **Sampling** [1] | Turning a probability distribution into one chosen token (temperature, top-k, top-p). | A load-balancing policy over ranked candidates |
 | **SFT** [1] | Supervised fine-tuning on example conversations; teaches instruction following. | |
 | **Softmax** [1] | Turns scores into probabilities that sum to 1: exp(zᵢ)/Σexp(zⱼ). | |
 | **SSE (Server-Sent Events)** [2] | `text/event-stream` responses made of `data:` lines and blank-line-terminated events; how LLMs stream. | One-way streaming over plain HTTP |
 | **Stateless (API)** [1] | Each request is independent; history exists only if you resend it. | REST with no server session |
+| **Stop condition** [4] | A rule that ends the agent loop: done tool called, step cap, token or cost budget, timeout. Record which one fired. | `while` guard + deadline + circuit breaker |
 | **Structured output** [2] | Constraining the model to emit JSON matching a schema. | Response validation with a schema |
 | **System prompt** [2] | Top-priority instructions that frame the model's behaviour for a request. | Server-side config injected into every request |
 | **Teacher forcing** [1] | Training trick: predict every next token in parallel, given the true previous tokens. | |
@@ -78,9 +88,13 @@ Short definitions, with a web-engineering analogy where one helps. The phase whe
 | **Thundering herd** [2] | Many clients retrying in lockstep and overwhelming a recovering service. | Same as in any distributed system |
 | **Token** [1] | The unit an LLM reads/writes: a subword piece with an integer id. | |
 | **Tool / function calling** [2] | The model emits a structured request to call a function; **your code** executes it and returns the result. | An RPC request the model asks you to make |
+| **Tool approval (human-in-the-loop)** [4] | The loop pauses on a risky tool call until a person approves or denies; resumes in a new request. AI SDK: `toolApproval`. | Two-person rule / change approval |
+| **ToolLoopAgent** [4] | AI SDK 7 class that runs the model ⇄ tools loop with stop conditions, approvals and per-step hooks. | A job runner around an RPC |
 | **Top-k / top-p (nucleus)** [1] | Keep the k most likely tokens, or the smallest set whose cumulative probability ≥ p, before sampling. | Health checks that drop bad candidates |
+| **Trajectory** [4] | The sequence of tool calls (with inputs and outcomes) an agent made; checked in evals alongside the final state. | A request trace / audit trail |
 | **Transformer** [1] | Architecture of stacked blocks (attention + MLP + residuals). | A middleware pipeline |
 | **tsvector / full-text search** [3] | Postgres' built-in keyword search: text is parsed into normalised lexemes (`tsvector`), matched by a `tsquery`, indexed with GIN and ranked with `ts_rank`. Not BM25. | `LIKE` grown up: stemming, stopwords and an inverted index |
 | **TTFT** [1, 7] | Time to first token: prefill + queueing latency. | Time to first byte |
 | **UI message stream** [2] | The AI SDK's typed SSE protocol between your server and `useChat` (text deltas, tool parts, metadata). | Your app's own streaming API contract |
 | **Vector database** [3] | Storage + approximate nearest-neighbour index over embeddings (e.g. pgvector HNSW). | An index optimised for "nearest", not "equal" |
+| **Workflow (vs agent)** [4] | LLM calls on a path fixed by your code. Cheaper, faster and more testable than an agent; the default choice. | A request handler vs a planner |

@@ -18,7 +18,9 @@
     "db:reset": "docker compose -f infra/docker-compose.yml down -v && docker compose -f infra/docker-compose.yml up -d --wait",
     "db:psql": "docker compose -f infra/docker-compose.yml exec db psql -U app -d rag",
     "verify:p3": "tsx scripts/verify.ts phase-03",
-    "verify:p3:live": "tsx scripts/verify.ts phase-03 --live"
+    "verify:p3:live": "tsx scripts/verify.ts phase-03 --live",
+    "verify:p4": "tsx scripts/verify.ts phase-04",
+    "verify:p4:live": "tsx scripts/verify.ts phase-04 --live"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
@@ -42,6 +44,8 @@
     "phase-02-llm-apis/project/reference",
     "phase-02-llm-apis/project/starter",
     "phase-03-rag/project/reference",
-    "phase-03-rag/project/starter"
+    "phase-03-rag/project/starter",
+    "phase-04-agents/project/reference",
+    "phase-04-agents/project/starter"
   ]
 }

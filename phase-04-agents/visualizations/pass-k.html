@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pass at K Reliability</title>
+<style>
+  :root { --bg: #f7f7f5; --card: #ffffff; --ink: #1d1d1b; --muted: #6b6b66; --line: #e3e2dc; --accent: #3b5bdb; --accent-soft: #e7ecff; --warn: #c2410c; --good: #15803d; --bad: #dc2626; --tool: #7c3aed; --tool-soft: #f1eafe; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #151514; --card: #1f1f1d; --ink: #ececea; --muted: #a3a39c; --line: #34342f; --accent: #8da2fb; --accent-soft: #262b45; --warn: #fb923c; --good: #4ade80; --bad: #f87171; --tool: #c4b5fd; --tool-soft: #2e2645; } }
+  :root[data-theme="dark"] { --bg: #151514; --card: #1f1f1d; --ink: #ececea; --muted: #a3a39c; --line: #34342f; --accent: #8da2fb; --accent-soft: #262b45; --warn: #fb923c; --good: #4ade80; --bad: #f87171; --tool: #c4b5fd; --tool-soft: #2e2645; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1100px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 1.6rem; margin: 0 0 4px; } h2 { font-size: 1.02rem; margin: 0 0 8px; }
+  p.lead { color: var(--muted); margin: 0 0 16px; max-width: 85ch; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px; margin-bottom: 16px; min-width: 0; }
+  .layout { display: grid; grid-template-columns: 320px minmax(0, 1fr); gap: 16px; }
+  @media (max-width: 860px) { .layout { grid-template-columns: 1fr; } }
+  label.ctl { display: block; font-size: 14px; margin: 10px 0 0; } label.ctl b { float: right; font-variant-numeric: tabular-nums; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  select, button { font: inherit; padding: 6px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--ink); }
+  select { width: 100%; } button { cursor: pointer; } button.primary { background: var(--accent); border-color: var(--accent); color: #fff; } button:disabled { opacity: .45; cursor: default; }
+  .stat { display: inline-block; padding: 4px 10px; border-radius: 999px; background: var(--accent-soft); margin: 2px 4px 2px 0; font-size: 13px; font-variant-numeric: tabular-nums; }
+  .callout { border-left: 3px solid var(--warn); padding: 6px 12px; background: var(--bg); border-radius: 0 8px 8px 0; margin-top: 10px; font-size: 14px; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  svg text { fill: var(--ink); font-family: system-ui, sans-serif; }
+  code { font: 12.5px ui-monospace, Menlo, Consolas, monospace; background: var(--bg); padding: 1px 4px; border-radius: 4px; }
+</style>
+<style>
+  .chart { width: 100%; height: 250px; }
+  .chart .axis { stroke: var(--line); } .chart .at { stroke: var(--good); fill: none; stroke-width: 2.5; } .chart .hat { stroke: var(--bad); fill: none; stroke-width: 2.5; }
+  .grid { display: grid; gap: 3px; margin-top: 8px; }
+  .grid div { height: 16px; border-radius: 3px; } .grid .y { background: var(--good); } .grid .n { background: var(--bad); opacity: .8; }
+  .gl { display: grid; grid-template-columns: 70px 1fr 120px; gap: 8px; align-items: center; font-size: 12.5px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>pass@k vs pass^k: how reliable is your agent really?</h1>
+  <p class="lead">If a task succeeds with probability <i>p</i> per attempt, <b>pass@k</b> (at least one of k attempts works) climbs towards 100%, while <b>pass^k</b> (all k attempts work) falls towards 0. Your customers each get one attempt, so pass^k is the one that matches what they experience.</p>
+  <div class="layout">
+    <section class="card">
+      <label class="ctl">Per-attempt success rate p <b id="pV"></b></label><input type="range" id="p" min="0.3" max="0.995" step="0.005" value="0.9">
+      <label class="ctl">Tasks in the simulated suite <b id="tV"></b></label><input type="range" id="t" min="3" max="12" value="5">
+      <label class="ctl">Trials per task <b id="kV"></b></label><input type="range" id="k" min="1" max="12" value="8">
+      <div class="row" style="margin-top:12px"><button id="sim" class="primary">Re-run simulation</button></div>
+      <div class="callout">Measured in Lab 06 (<code>gemini-3.5-flash-lite</code>, 5 tasks × 3 trials): run 1 15/15, run 2 14/15 → pass^3 1.00 then 0.80, on identical code. τ-bench reported pass^8 under 25% for strong models on retail tasks.</div>
+    </section>
+    <section class="card">
+      <svg class="chart" id="chart" viewBox="0 0 700 250"></svg>
+      <div class="muted"><span style="color:var(--good)">━ pass@k</span> &nbsp; <span style="color:var(--bad)">━ pass^k</span> &nbsp; for k = 1…20 at the chosen p</div>
+      <h2 style="margin-top:12px">One simulated eval run</h2>
+      <div id="grid"></div>
+      <div id="stats" style="margin-top:8px"></div>
+    </section>
+  </div>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+let seed = 1;
+const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+function chart(p) {
+  const W = 700, H = 220, X = (k) => 40 + ((k - 1) / 19) * (W - 60), Y = (v) => 10 + (1 - v) * (H - 20);
+  let s = `<line class="axis" x1="40" y1="${Y(0)}" x2="${W - 20}" y2="${Y(0)}"/><line class="axis" x1="40" y1="${Y(1)}" x2="40" y2="${Y(0)}"/>`;
+  for (const v of [0, 0.25, 0.5, 0.75, 1]) s += `<text x="34" y="${Y(v) + 4}" font-size="11" text-anchor="end">${v * 100}%</text><line class="axis" x1="40" y1="${Y(v)}" x2="${W - 20}" y2="${Y(v)}" style="opacity:.4"/>`;
+  for (const k of [1, 5, 10, 15, 20]) s += `<text x="${X(k)}" y="${H + 18}" font-size="11" text-anchor="middle">k=${k}</text>`;
+  const pts = (f) => Array.from({ length: 20 }, (_, i) => `${X(i + 1)},${Y(f(i + 1))}`).join(' ');
+  s += `<polyline class="at" points="${pts((k) => 1 - (1 - p) ** k)}"/><polyline class="hat" points="${pts((k) => p ** k)}"/>`;
+  return s;
+}
+function render(resim) {
+  const p = +$('p').value, T = +$('t').value, k = +$('k').value;
+  $('pV').textContent = (p * 100).toFixed(1) + '%'; $('tV').textContent = T; $('kV').textContent = k;
+  $('chart').innerHTML = chart(p);
+  if (resim) seed = Math.floor(Math.random() * 1e6) + 1;
+  const s0 = seed; let allPass = 0, passes = 0, rows = '';
+  for (let t = 0; t < T; t++) {
+    const r = Array.from({ length: k }, () => rnd() < p);
+    const c = r.filter(Boolean).length; passes += c; if (c === k) allPass++;
+    rows += `<div class="gl"><span>task ${t + 1}</span><div class="grid" style="grid-template-columns:repeat(${k},1fr)">${r.map((x) => `<div class="${x ? 'y' : 'n'}"></div>`).join('')}</div><span>${c}/${k} ${c === k ? '✓ every time' : ''}</span></div>`;
+  }
+  seed = s0;
+  $('grid').innerHTML = rows;
+  $('stats').innerHTML = `<span class="stat">pass@1 (share of attempts): ${((passes / (T * k)) * 100).toFixed(0)}%</span><span class="stat">tasks that passed all ${k}: ${allPass}/${T}</span><span class="stat">expected pass^${k}: ${(p ** k * 100).toFixed(0)}%</span><span class="stat">a 1-in-${Math.round(1 / (1 - p))} failure rate at 10k tasks/day = ${Math.round(1e4 * (1 - p)).toLocaleString()} failures/day</span>`;
+}
+['p', 't', 'k'].forEach((id) => ($(id).oninput = () => render(false)));
+$('sim').onclick = () => render(true);
+render(true);
+</script>
+</body>
+</html>
