@@ -13,5 +13,5 @@
     "types": ["node"]
   },
   "include": ["shared/**/*.ts", "scripts/**/*.ts", "phase-*/labs/**/*.ts", "phase-*/project/**/*.ts"],
-  "exclude": ["node_modules", "**/node_modules", "**/.next", "phase-02-llm-apis/project/reference", "phase-02-llm-apis/project/starter", "phase-03-rag/project/reference", "phase-03-rag/project/starter", "phase-04-agents/project/reference", "phase-04-agents/project/starter"]
+  "exclude": ["node_modules", "**/node_modules", "**/.next", "phase-02-llm-apis/project/reference", "phase-02-llm-apis/project/starter", "phase-03-rag/project/reference", "phase-03-rag/project/starter", "phase-04-agents/project/reference", "phase-04-agents/project/starter", "phase-05-mcp/project"]
 }

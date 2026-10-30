@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MCP on the Wire</title>
+<style>
+  :root { --bg: #f7f7f5; --card: #ffffff; --ink: #1d1d1b; --muted: #6b6b66; --line: #e3e2dc; --accent: #3b5bdb; --accent-soft: #e7ecff; --warn: #c2410c; --good: #15803d; --bad: #dc2626; --tool: #7c3aed; --tool-soft: #f1eafe; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #151514; --card: #1f1f1d; --ink: #ececea; --muted: #a3a39c; --line: #34342f; --accent: #8da2fb; --accent-soft: #262b45; --warn: #fb923c; --good: #4ade80; --bad: #f87171; --tool: #c4b5fd; --tool-soft: #2e2645; } }
+  :root[data-theme="dark"] { --bg: #151514; --card: #1f1f1d; --ink: #ececea; --muted: #a3a39c; --line: #34342f; --accent: #8da2fb; --accent-soft: #262b45; --warn: #fb923c; --good: #4ade80; --bad: #f87171; --tool: #c4b5fd; --tool-soft: #2e2645; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1100px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 1.6rem; margin: 0 0 4px; } h2 { font-size: 1.02rem; margin: 0 0 8px; }
+  p.lead { color: var(--muted); margin: 0 0 16px; max-width: 85ch; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px; margin-bottom: 16px; min-width: 0; }
+  .layout { display: grid; grid-template-columns: 320px minmax(0, 1fr); gap: 16px; }
+  @media (max-width: 860px) { .layout { grid-template-columns: 1fr; } }
+  button { font: inherit; padding: 6px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--ink); cursor: pointer; }
+  button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .stat { display: inline-block; padding: 4px 10px; border-radius: 999px; background: var(--accent-soft); margin: 2px 4px 2px 0; font-size: 13px; font-variant-numeric: tabular-nums; }
+  .callout { border-left: 3px solid var(--warn); padding: 6px 12px; background: var(--bg); border-radius: 0 8px 8px 0; margin-top: 10px; font-size: 14px; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  code { font: 12.5px ui-monospace, Menlo, Consolas, monospace; background: var(--bg); padding: 1px 4px; border-radius: 4px; }
+  .steps { display: flex; flex-direction: column; gap: 6px; }
+  .steps button { text-align: left; display: flex; gap: 8px; align-items: baseline; }
+  .steps button .n { font-variant-numeric: tabular-nums; color: var(--muted); width: 1.4em; }
+  .steps button.on .n { color: #fff; }
+  .steps .tag { margin-left: auto; font-size: 12px; opacity: .85; }
+  pre { font: 12.5px/1.45 ui-monospace, Menlo, Consolas, monospace; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 10px; overflow: auto; max-height: 340px; margin: 6px 0 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .hl { background: color-mix(in srgb, var(--warn) 25%, transparent); border-radius: 3px; }
+  .two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+  @media (max-width: 860px) { .two { grid-template-columns: 1fr; } }
+  .lanes { display: grid; grid-template-columns: 1fr 80px 1fr 80px 1fr; align-items: center; gap: 0; margin: 6px 0 4px; }
+  .lane { border: 1px solid var(--line); border-radius: 8px; padding: 8px; text-align: center; font-size: 13px; background: var(--bg); }
+  .lane b { display: block; font-size: 14px; }
+  .arrow { text-align: center; color: var(--muted); font-size: 18px; }
+  .arrow.live { color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <h1>One tool call, on the wire</h1>
+  <p class="lead">A real MCP client asking the Acme server for <code>getDeployStatus(api)</code>, then trying to roll back a healthy service. Every message below was recorded from the SDK (see <code>_data/generate.ts</code>). Switch eras to see what the <b>2026-07-28</b> revision removed: the handshake, the session, and the guesswork.</p>
+
+  <section class="card">
+    <div class="lanes">
+      <div class="lane"><b>Host</b>your app + the model</div>
+      <div class="arrow" id="a1">⇄</div>
+      <div class="lane"><b>MCP client</b>one per server</div>
+      <div class="arrow live" id="a2">⇄</div>
+      <div class="lane"><b>MCP server</b>Acme ops</div>
+    </div>
+    <p class="muted" style="margin:6px 0 0">The model never talks to the server. It emits a tool call; the host's client turns it into JSON-RPC over stdio or HTTP.</p>
+  </section>
+
+  <div class="layout">
+    <section class="card">
+      <h2>Protocol revision</h2>
+      <div class="row"><button id="modern" class="on">2026-07-28</button><button id="legacy">2025-11-25</button></div>
+      <div id="stats" style="margin:10px 0"></div>
+      <h2>Messages</h2>
+      <div class="steps" id="steps"></div>
+      <div class="callout" id="note"></div>
+    </section>
+    <section class="card">
+      <div class="two">
+        <div><h2>Request</h2><div class="muted" id="reqh"></div><pre id="req"></pre></div>
+        <div><h2>Response</h2><div class="muted" id="resh"></div><pre id="res"></pre></div>
+      </div>
+      <div class="callout" id="explain"></div>
+    </section>
+  </div>
+</main>
+<script type="application/json" id="viz-data">{"modern":[{"method":"server/discover","requestHeaders":{"accept":"application/json, text/event-stream","content-type":"application/json","mcp-method":"server/discover","mcp-protocol-version":"2026-07-28"},"request":{"jsonrpc":"2.0","id":"server-discover-probe-1","method":"server/discover","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"viz-host","version":"1.0.0"},"io.modelcontextprotocol/clientCapabilities":{}}}},"status":200,"responseHeaders":{"content-type":"application/json"},"response":{"result":{"supportedVersions":["2026-07-28"],"capabilities":{"tools":{"listChanged":true}},"instructions":"Acme operations: customers, invoices, deploys and tickets. Check policy with searchHandbook before acting.","resultType":"complete","ttlMs":0,"cacheScope":"private","_meta":{"io.modelcontextprotocol/serverInfo":{"name":"acme-ops","version":"1.0.0"}}},"jsonrpc":"2.0","id":"server-discover-probe-1"}},{"method":"tools/list","requestHeaders":{"accept":"application/json, text/event-stream","content-type":"application/json","mcp-method":"tools/list","mcp-protocol-version":"2026-07-28"},"request":{"method":"tools/list","jsonrpc":"2.0","id":0,"params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"viz-host","version":"1.0.0"},"io.modelcontextprotocol/clientCapabilities":{}}}},"status":200,"responseHeaders":{"content-type":"application/json"},"response":{"result":{"tools":[{"name":"searchHandbook","title":"Search the handbook","description":"Search the Acme engineering handbook (refund policy, deploys and rollbacks, incidents, security...). Returns up to 3 sections with their source file.","inputSchema":{"type":"object","$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"query":{"type":"string","description":"Keywords or a question, e.g. \"refund window days\""}},"required":["query"]},"annotations":{"readOnlyHint":true,"openWorldHint":false}},{"name":"findCustomers","description":"Find customers by part of their name, email or id. Returns id (format C-123), name, email and plan.","inputSchema":{"type":"object","$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"query":{"type":"string"}},"required":["query"]},"annotations":{"readOnlyHint":true,"openWorldHint":false}},{"name":"listInvoices","description":"A customer's invoices: amount, date, daysAgo, status and refundableUSD.","inputSchema":{"type":"object","$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"customerId":{"type":"string","description":"Customer id, format C-123"}},"required":["customerId"]},"annotations":{"readOnlyHint":true,"openWorldHint":false}},{"name":"getDeployStatus","description":"Current production deploy of a service: version, previous version, status (healthy/degraded) and error rate.","inputSchema":{"type":"object","$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"service":{"type":"string","enum":["api","web","worker"]}},"required":["service"]},"annotations":{"readOnlyHint":true,"openWorldHint":false}},{"name":"rollback","description":"Roll a DEGRADED service back to its previous known-good version. Fails for healthy services. No approval needed (handbook).","inputSchema":{"type":"object","$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"service":{"type":"string","enum":["api","web","worker"]}},"required":["service"]},"annotations":{"readOnlyHint":false,"destructiveHint":true,"idempotentHint":false,"openWorldHint":false}},{"name":"createTicket","description":"Open a ticket for a human team (billing, SRE, support): follow-ups such as post-incident reviews, or anything you may not do yourself.","inputSchema":{"type":"object","$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"subject":{"type":"string"},"body":{"type":"string"},"priority":{"type":"string","enum":["low","normal","high","urgent"]},"customerId":{"type":"string"}},"required":["subject","body","priority"]},"annotations":{"readOnlyHint":false,"destructiveHint":false,"openWorldHint":false}}],"resultType":"complete","ttlMs":0,"cacheScope":"private","_meta":{"io.modelcontextprotocol/serverInfo":{"name":"acme-ops","version":"1.0.0"}}},"jsonrpc":"2.0","id":0}},{"method":"tools/call","requestHeaders":{"accept":"application/json, text/event-stream","content-type":"application/json","mcp-method":"tools/call","mcp-name":"getDeployStatus","mcp-protocol-version":"2026-07-28"},"request":{"method":"tools/call","params":{"name":"getDeployStatus","arguments":{"service":"api"},"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"viz-host","version":"1.0.0"},"io.modelcontextprotocol/clientCapabilities":{}}},"jsonrpc":"2.0","id":1},"status":200,"responseHeaders":{"content-type":"application/json"},"response":{"result":{"content":[{"type":"text","text":"{\"service\":\"api\",\"version\":\"2026.10.15-2\",\"previousVersion\":\"2026.10.14-1\",\"status\":\"degraded\",\"errorRatePct\":6.4,\"deployedAt\":\"2026-10-15T08:40:00Z\"}"}],"structuredContent":{"service":"api","version":"2026.10.15-2","previousVersion":"2026.10.14-1","status":"degraded","errorRatePct":6.4,"deployedAt":"2026-10-15T08:40:00Z"},"resultType":"complete","_meta":{"io.modelcontextprotocol/serverInfo":{"name":"acme-ops","version":"1.0.0"}}},"jsonrpc":"2.0","id":1}},{"method":"tools/call","requestHeaders":{"accept":"application/json, text/event-stream","content-type":"application/json","mcp-method":"tools/call","mcp-name":"rollback","mcp-protocol-version":"2026-07-28"},"request":{"method":"tools/call","params":{"name":"rollback","arguments":{"service":"web"},"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"viz-host","version":"1.0.0"},"io.modelcontextprotocol/clientCapabilities":{}}},"jsonrpc":"2.0","id":2},"status":200,"responseHeaders":{"content-type":"application/json"},"response":{"result":{"content":[{"type":"text","text":"web 2026.10.13-1 is healthy (error rate 0.2%). Roll back only a degraded service."}],"isError":true,"resultType":"complete","_meta":{"io.modelcontextprotocol/serverInfo":{"name":"acme-ops","version":"1.0.0"}}},"jsonrpc":"2.0","id":2}}],"legacy":[{"method":"initialize","requestHeaders":{"accept":"application/json, text/event-stream","content-type":"application/json"},"request":{"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"viz-host","version":"1.0.0"}},"jsonrpc":"2.0","id":0},"status":200,"responseHeaders":{"content-type":"text/event-stream"},"response":{"result":{"protocolVersion":"2025-11-25","capabilities":{"tools":{"listChanged":true}},"serverInfo":{"name":"acme-ops","version":"1.0.0"},"instructions":"Acme operations: customers, invoices, deploys and tickets. Check policy with searchHandbook before acting."},"jsonrpc":"2.0","id":0}},{"method":"notifications/initialized","requestHeaders":{"accept":"application/json, text/event-stream","content-type":"application/json","mcp-protocol-version":"2025-11-25"},"request":{"jsonrpc":"2.0","method":"notifications/initialized"},"status":202,"responseHeaders":{},"response":null},{"method":"GET","requestHeaders":{"accept":"text/event-stream","mcp-protocol-version":"2025-11-25"},"request":null,"status":405,"responseHeaders":{"content-type":"application/json"},"response":{"jsonrpc":"2.0","error":{"code":-32000,"message":"Method not allowed."},"id":null}},{"method":"tools/list","requestHeaders":{"accept":"application/json, text/event-stream","content-type":"application/json","mcp-protocol-version":"2025-11-25"},"request":{"method":"tools/list","jsonrpc":"2.0","id":1},"status":200,"responseHeaders":{"content-type":"text/event-stream"},"response":{"result":{"tools":[{"name":"searchHandbook","title":"Search the handbook","description":"Search the Acme engineering handbook (refund policy, deploys and rollbacks, incidents, security...). Returns up to 3 sections with their source file.","inputSchema":{"type":"object","$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"query":{"type":"string","description":"Keywords or a question, e.g. \"refund window days\""}},"required":["query"]},"annotations":{"readOnlyHint":true,"openWorldHint":false}},{"name":"findCustomers","description":"Find customers by part of their name, email or id. Returns id (format C-123), name, email and plan.","inputSchema":{"type":"object","$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"query":{"type":"string"}},"required":["query"]},"annotations":{"readOnlyHint":true,"openWorldHint":false}},{"name":"listInvoices","description":"A customer's invoices: amount, date, daysAgo, status and refundableUSD.","inputSchema":{"type":"object","$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"customerId":{"type":"string","description":"Customer id, format C-123"}},"required":["customerId"]},"annotations":{"readOnlyHint":true,"openWorldHint":false}},{"name":"getDeployStatus","description":"Current production deploy of a service: version, previous version, status (healthy/degraded) and error rate.","inputSchema":{"type":"object","$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"service":{"type":"string","enum":["api","web","worker"]}},"required":["service"]},"annotations":{"readOnlyHint":true,"openWorldHint":false}},{"name":"rollback","description":"Roll a DEGRADED service back to its previous known-good version. Fails for healthy services. No approval needed (handbook).","inputSchema":{"type":"object","$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"service":{"type":"string","enum":["api","web","worker"]}},"required":["service"]},"annotations":{"readOnlyHint":false,"destructiveHint":true,"idempotentHint":false,"openWorldHint":false}},{"name":"createTicket","description":"Open a ticket for a human team (billing, SRE, support): follow-ups such as post-incident reviews, or anything you may not do yourself.","inputSchema":{"type":"object","$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"subject":{"type":"string"},"body":{"type":"string"},"priority":{"type":"string","enum":["low","normal","high","urgent"]},"customerId":{"type":"string"}},"required":["subject","body","priority"]},"annotations":{"readOnlyHint":false,"destructiveHint":false,"openWorldHint":false}}]},"jsonrpc":"2.0","id":1}},{"method":"tools/call","requestHeaders":{"accept":"application/json, text/event-stream","content-type":"application/json","mcp-protocol-version":"2025-11-25"},"request":{"method":"tools/call","params":{"name":"getDeployStatus","arguments":{"service":"api"}},"jsonrpc":"2.0","id":2},"status":200,"responseHeaders":{"content-type":"text/event-stream"},"response":{"result":{"content":[{"type":"text","text":"{\"service\":\"api\",\"version\":\"2026.10.15-2\",\"previousVersion\":\"2026.10.14-1\",\"status\":\"degraded\",\"errorRatePct\":6.4,\"deployedAt\":\"2026-10-15T08:40:00Z\"}"}],"structuredContent":{"service":"api","version":"2026.10.15-2","previousVersion":"2026.10.14-1","status":"degraded","errorRatePct":6.4,"deployedAt":"2026-10-15T08:40:00Z"}},"jsonrpc":"2.0","id":2}},{"method":"tools/call","requestHeaders":{"accept":"application/json, text/event-stream","content-type":"application/json","mcp-protocol-version":"2025-11-25"},"request":{"method":"tools/call","params":{"name":"rollback","arguments":{"service":"web"}},"jsonrpc":"2.0","id":3},"status":200,"responseHeaders":{"content-type":"text/event-stream"},"response":{"result":{"content":[{"type":"text","text":"web 2026.10.13-1 is healthy (error rate 0.2%). Roll back only a degraded service."}],"isError":true},"jsonrpc":"2.0","id":3}}]}</script>
+<script>
+const DATA = JSON.parse(document.getElementById('viz-data').textContent);
+let era = 'modern', i = 0;
+const EXPLAIN = {
+  'server/discover': 'Optional probe: which revisions and capabilities does this server support? Then every request carries what it needs. Nothing is "opened".',
+  'initialize': 'The 2025 handshake: protocol version and capabilities are negotiated ONCE, and the server may hand out an Mcp-Session-Id that every later request must carry.',
+  'notifications/initialized': 'Second half of the handshake: a notification (no id, no response body). Two round trips before any work.',
+  'tools/list': 'The tool definitions (name, description, JSON Schema). The host turns these into model tools, so they are re-sent to the model on every agent step.',
+  'tools/call': 'The actual call. A result with isError: true is still a successful JSON-RPC response: the tool failed, the protocol did not, and the model gets to read why.',
+  'GET': 'The 2025 client opens a GET stream so the server can push requests and notifications to it later. This server is stateless, so it answers 405 and the client carries on without one. In 2026-07-28 that channel is gone: change notifications use subscriptions/listen.',
+};
+const label = (e) => e.method === 'tools/call' ? `tools/call ${e.request?.params?.name ?? ''}` : e.method;
+const tag = (e) => e.method === 'tools/call' ? (e.response?.result?.isError ? '✗ isError' : '✓') : (e.status === 202 ? '202' : '');
+const highlight = (json) => json
+  .replace(/("io\.modelcontextprotocol\/[^"]+")/g, '<span class="hl">$1</span>')
+  .replace(/("resultType")/g, '<span class="hl">$1</span>')
+  .replace(/("isError": true)/g, '<span class="hl">$1</span>');
+const esc = (s) => s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+const fmtHeaders = (h) => Object.entries(h).map(([k, v]) => `<code>${esc(k)}: ${esc(String(v))}</code>`).join(' ');
+function render() {
+  const log = DATA[era] ?? [];
+  document.getElementById('modern').classList.toggle('on', era === 'modern');
+  document.getElementById('legacy').classList.toggle('on', era === 'legacy');
+  const session = log.some((e) => e.responseHeaders['mcp-session-id']);
+  const handshake = log.filter((e) => ['initialize', 'notifications/initialized'].includes(e.method)).length;
+  const bytes = log.reduce((s, e) => s + JSON.stringify(e.request ?? '').length + JSON.stringify(e.response ?? '').length, 0);
+  document.getElementById('stats').innerHTML = `<span class="stat">${log.length} HTTP requests</span><span class="stat">${handshake} handshake messages</span><span class="stat">session id: ${session ? 'yes' : 'none'}</span><span class="stat">${(bytes / 1024).toFixed(1)} KB JSON</span>`;
+  document.getElementById('steps').innerHTML = log.map((e, k) => `<button data-k="${k}" class="${k === i ? 'on' : ''}"><span class="n">${k + 1}</span>${esc(label(e))}<span class="tag">${tag(e)}</span></button>`).join('');
+  document.querySelectorAll('#steps button').forEach((b) => b.onclick = () => { i = +b.dataset.k; render(); });
+  const e = log[i];
+  if (!e) return;
+  document.getElementById('reqh').innerHTML = `${e.method === 'GET' ? 'GET' : 'POST'} /mcp ${fmtHeaders(e.requestHeaders)}`;
+  document.getElementById('resh').innerHTML = `HTTP ${e.status} ${fmtHeaders(e.responseHeaders)}`;
+  document.getElementById('req').innerHTML = highlight(esc(JSON.stringify(e.request, null, 2) ?? '(no body)'));
+  document.getElementById('res').innerHTML = highlight(esc(JSON.stringify(e.response, null, 2) ?? '(no body)'));
+  document.getElementById('explain').textContent = EXPLAIN[e.method] ?? '';
+  document.getElementById('note').innerHTML = era === 'modern'
+    ? 'Every request is self-contained: protocol version, client info and capabilities ride in <code>_meta</code> (highlighted), and the method and tool name are also in <code>Mcp-Method</code> / <code>Mcp-Name</code> headers so gateways can route without parsing JSON. Any instance behind a load balancer can answer.'
+    : 'The 2025 flow starts with a two-message handshake and (on stateful servers) a session id that pins the client to one server process. Our server is stateless even for 2025 clients, so you see the handshake but no session.';
+}
+document.getElementById('modern').onclick = () => { era = 'modern'; i = 0; render(); };
+document.getElementById('legacy').onclick = () => { era = 'legacy'; i = 0; render(); };
+render();
+</script>
+</body>
+</html>

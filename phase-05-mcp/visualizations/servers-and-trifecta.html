@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Servers and the Trifecta</title>
+<style>
+  :root { --bg: #f7f7f5; --card: #ffffff; --ink: #1d1d1b; --muted: #6b6b66; --line: #e3e2dc; --accent: #3b5bdb; --accent-soft: #e7ecff; --warn: #c2410c; --good: #15803d; --bad: #dc2626; --tool: #7c3aed; --tool-soft: #f1eafe; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #151514; --card: #1f1f1d; --ink: #ececea; --muted: #a3a39c; --line: #34342f; --accent: #8da2fb; --accent-soft: #262b45; --warn: #fb923c; --good: #4ade80; --bad: #f87171; --tool: #c4b5fd; --tool-soft: #2e2645; } }
+  :root[data-theme="dark"] { --bg: #151514; --card: #1f1f1d; --ink: #ececea; --muted: #a3a39c; --line: #34342f; --accent: #8da2fb; --accent-soft: #262b45; --warn: #fb923c; --good: #4ade80; --bad: #f87171; --tool: #c4b5fd; --tool-soft: #2e2645; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1100px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 1.6rem; margin: 0 0 4px; } h2 { font-size: 1.02rem; margin: 0 0 8px; }
+  p.lead { color: var(--muted); margin: 0 0 16px; max-width: 85ch; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px; margin-bottom: 16px; min-width: 0; }
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 16px; }
+  @media (max-width: 860px) { .layout { grid-template-columns: 1fr; } }
+  label.ctl { display: block; font-size: 14px; margin: 10px 0 0; } label.ctl b { float: right; font-variant-numeric: tabular-nums; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .stat { display: inline-block; padding: 4px 10px; border-radius: 999px; background: var(--accent-soft); margin: 2px 4px 2px 0; font-size: 13px; font-variant-numeric: tabular-nums; }
+  .callout { border-left: 3px solid var(--warn); padding: 6px 12px; background: var(--bg); border-radius: 0 8px 8px 0; margin-top: 10px; font-size: 14px; }
+  .muted { color: var(--muted); font-size: 13px; }
+  code { font: 12.5px ui-monospace, Menlo, Consolas, monospace; background: var(--bg); padding: 1px 4px; border-radius: 4px; }
+  .servers { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
+  .srv { border: 1px solid var(--line); border-radius: 10px; padding: 10px; cursor: pointer; background: var(--card); text-align: left; font: inherit; color: inherit; }
+  .srv.on { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+  .srv b { display: block; } .srv .muted { display: block; margin: 2px 0 6px; }
+  .pill { display: inline-block; font-size: 11.5px; padding: 1px 8px; border-radius: 999px; margin: 2px 4px 0 0; border: 1px solid var(--line); }
+  .pill.p { border-color: var(--tool); color: var(--tool); } .pill.u { border-color: var(--warn); color: var(--warn); } .pill.x { border-color: var(--bad); color: var(--bad); }
+  .legs { display: flex; flex-direction: column; gap: 8px; }
+  .leg { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+  .leg.lit { border-color: var(--bad); background: color-mix(in srgb, var(--bad) 8%, transparent); }
+  .leg b { display: block; font-size: 14px; } .leg span { font-size: 13px; color: var(--muted); }
+  .verdict { font-weight: 600; font-size: 16px; margin: 10px 0 0; } .verdict.bad { color: var(--bad); } .verdict.ok { color: var(--good); }
+  .bar { height: 10px; background: var(--accent); border-radius: 5px; }
+  .barbox { background: var(--bg); border-radius: 5px; margin: 6px 0; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Which servers should this session have?</h1>
+  <p class="lead">Connecting an MCP server is cheap to do and expensive to have. Every server's tool definitions ride along on <b>every</b> model request, and every server adds capabilities that combine with the others. Toggle servers to see the context cost and whether you have built the <b>lethal trifecta</b>: private data + untrusted content + a way to send data out.</p>
+  <div class="layout">
+    <section class="card">
+      <h2>Servers in this session</h2>
+      <div class="servers" id="servers"></div>
+      <p class="muted" style="margin-top:10px">Token counts marked <b>measured</b> come from <code>tools/list</code> of this phase's servers (o200k tokenizer). Others are typical sizes for that kind of server, to show the scale.</p>
+    </section>
+    <section class="card">
+      <h2>The three legs</h2>
+      <div class="legs" id="legs"></div>
+      <div class="verdict" id="verdict"></div>
+      <div class="callout" id="advice"></div>
+      <h2 style="margin-top:16px">Context cost</h2>
+      <label class="ctl">Agent steps per task <b id="stepsV">8</b></label>
+      <input type="range" id="steps" min="1" max="20" value="8">
+      <div id="cost"></div>
+    </section>
+  </div>
+</main>
+<script type="application/json" id="viz-data">{"costs":[{"name":"acme-ops","tools":6,"tokens":510},{"name":"status-page","tools":2,"tokens":113},{"name":"acme-handbook","tools":1,"tokens":129}]}</script>
+<script>
+const DATA = JSON.parse(document.getElementById('viz-data').textContent);
+const measured = Object.fromEntries((DATA.costs ?? []).map((c) => [c.name, c]));
+const SERVERS = [
+  { id: 'acme-ops', name: 'Acme ops (Phase 5 env)', what: 'customers, invoices, deploys, tickets', p: 1, u: 0, x: 0, on: true },
+  { id: 'status-page', name: 'Status page', what: 'public incidents', p: 0, u: 0, x: 0, on: true },
+  { id: 'acme-handbook', name: 'Handbook (Lab 01)', what: 'internal docs', p: 1, u: 0, x: 0, on: false },
+  { id: 'team-notes', name: 'Team notes (third party)', what: 'shared board anyone can write to', p: 0, u: 1, x: 1, tools: 1, tokens: 60, on: false },
+  { id: 'web-fetch', name: 'Web fetch', what: 'reads any URL', p: 0, u: 1, x: 1, tools: 1, tokens: 120, on: false, note: 'A GET with data in the query string is an exfiltration channel.' },
+  { id: 'email', name: 'Email (read + send)', what: 'inbox and outbox', p: 1, u: 1, x: 1, tools: 6, tokens: 900, on: false, note: 'All three legs in ONE server.' },
+  { id: 'github', name: 'GitHub', what: 'issues, PRs, repo files', p: 1, u: 1, x: 1, tools: 40, tokens: 9000, on: false, note: 'Public issues are untrusted input; comments and PRs are a way out.' },
+  { id: 'filesystem', name: 'Filesystem', what: 'your home directory', p: 1, u: 0, x: 0, tools: 12, tokens: 1400, on: false },
+];
+for (const s of SERVERS) if (measured[s.id]) Object.assign(s, { tools: measured[s.id].tools, tokens: measured[s.id].tokens, measured: true });
+const steps = document.getElementById('steps');
+function render() {
+  document.getElementById('servers').innerHTML = SERVERS.map((s, k) => `<button class="srv ${s.on ? 'on' : ''}" data-k="${k}"><b>${s.on ? '☑' : '☐'} ${s.name}</b><span class="muted">${s.what} · ${s.tools} tools · ${s.tokens} tokens ${s.measured ? '<b>measured</b>' : '(typical)'}</span>${s.p ? '<span class="pill p">private data</span>' : ''}${s.u ? '<span class="pill u">untrusted content</span>' : ''}${s.x ? '<span class="pill x">can send out</span>' : ''}</button>`).join('');
+  document.querySelectorAll('.srv').forEach((b) => b.onclick = () => { SERVERS[+b.dataset.k].on = !SERVERS[+b.dataset.k].on; render(); });
+  const on = SERVERS.filter((s) => s.on);
+  const legs = [['p', 'Private data', 'reads what the user would not publish'], ['u', 'Untrusted content', 'text written by outsiders reaches the model'], ['x', 'External communication', 'the model can send data where others read it']];
+  document.getElementById('legs').innerHTML = legs.map(([k, t, d]) => { const who = on.filter((s) => s[k]).map((s) => s.name); return `<div class="leg ${who.length ? 'lit' : ''}"><b>${who.length ? '●' : '○'} ${t}</b><span>${who.length ? who.join(', ') : d}</span></div>`; }).join('');
+  const lethal = legs.every(([k]) => on.some((s) => s[k]));
+  const v = document.getElementById('verdict');
+  v.className = `verdict ${lethal ? 'bad' : 'ok'}`;
+  v.textContent = lethal ? '✗ Lethal trifecta: a prompt injection can exfiltrate private data' : on.length ? '✓ At most two legs: no exfiltration path by construction' : 'No servers';
+  const notes = on.filter((s) => s.note).map((s) => `<b>${s.name}:</b> ${s.note}`);
+  document.getElementById('advice').innerHTML = (lethal ? 'Break a leg for this session: drop a server, give the model read-only access, or require a person to approve every call that sends data out (Lab 04). In Lab 05 a real model, given team-notes next to acme-ops, copied every invoice into a note and told the user only "saved".' : 'Adding any server that supplies the missing leg turns this into an exfiltration path, even if each server is honest on its own.') + (notes.length ? '<br>' + notes.join('<br>') : '');
+  const per = on.reduce((s, x) => s + x.tokens, 0), n = +steps.value;
+  document.getElementById('stepsV').textContent = n;
+  const max = SERVERS.reduce((s, x) => s + x.tokens, 0);
+  document.getElementById('cost').innerHTML = `<span class="stat">${on.reduce((s, x) => s + x.tools, 0)} tools</span><span class="stat">${per.toLocaleString()} tokens per request</span><span class="stat">${(per * n).toLocaleString()} tokens per task</span><div class="barbox"><div class="bar" style="width:${Math.max(1, (100 * per) / max)}%"></div></div><p class="muted">Before the model reads a single word of the task. More tools also make tool choice worse: connect what this task needs, not everything you have.</p>`;
+}
+steps.oninput = render;
+render();
+</script>
+</body>
+</html>

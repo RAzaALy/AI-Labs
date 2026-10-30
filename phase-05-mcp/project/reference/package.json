@@ -1,0 +1,13 @@
+{
+  "name": "p5-acme-mcp-reference",
+  "private": true,
+  "type": "module",
+  "description": "Acme MCP server (stdio + Streamable HTTP) and an agent that uses it. Dependencies come from the repo root.",
+  "scripts": {
+    "seed": "tsx src/seed.ts",
+    "stdio": "tsx src/stdio.ts",
+    "http": "tsx src/http-main.ts",
+    "agent": "tsx src/agent.ts",
+    "inspect": "mcp-inspector --cli tsx src/stdio.ts --method tools/list"
+  }
+}

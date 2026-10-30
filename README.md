@@ -15,12 +15,12 @@ A ~130-hour curriculum for an experienced full-stack engineer who is new to AI. 
 | Base | [2. Working with LLM APIs](phase-02-llm-apis/) | 20 | Streaming chat UI with structured output, tool calling, and a token/cost meter |
 | Intermediate | [3. RAG](phase-03-rag/) | 22 | "Chat with your docs" with citations, plus a retrieval eval suite |
 | Intermediate | [4. Agents](phase-04-agents/) | 20 | Multi-tool agent that completes real tasks, with human-in-the-loop approvals |
-| Intermediate | 5. MCP | 11 | MCP server over your docs database, used from Claude Code/Desktop and your own agent |
+| Intermediate | [5. MCP](phase-05-mcp/) | 11 | MCP server over your docs database, used from Claude Code/Desktop and your own agent |
 | Advanced | 6. Local models | 11 | The agent on a local model with hosted fallback (+ optional LoRA) |
 | Advanced | 7. Production | 16 | Eval + tracing harness wired into CI, with guardrails and cost controls |
 | Advanced | 8. Capstone | 22 | Production Next.js + Node + Postgres/pgvector app with RAG, agents, MCP, jobs, evals, tracing, deployed with a runbook |
 
-Phases are added one at a time; each phase folder appears when it's built and verified (Phases 1–2 are published). The full schedule is in [ROADMAP.md](ROADMAP.md). Tick items off in [PROGRESS.md](PROGRESS.md).
+Phases are added one at a time; each phase folder appears when it's built and verified (Phases 1–5 are published). The full schedule is in [ROADMAP.md](ROADMAP.md). Tick items off in [PROGRESS.md](PROGRESS.md).
 
 ## Stack (versions verified 2026-10-10)
 | Layer | Choice | Why |

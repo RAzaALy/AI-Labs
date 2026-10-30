@@ -7,7 +7,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit -p .",
+    "typecheck": "tsc --noEmit -p . && tsc --noEmit -p phase-05-mcp/project",
     "verify": "tsx scripts/verify.ts",
     "verify:live": "tsx scripts/verify.ts --live",
     "verify:p1": "tsx scripts/verify.ts phase-01",
@@ -20,9 +20,12 @@
     "verify:p3": "tsx scripts/verify.ts phase-03",
     "verify:p3:live": "tsx scripts/verify.ts phase-03 --live",
     "verify:p4": "tsx scripts/verify.ts phase-04",
-    "verify:p4:live": "tsx scripts/verify.ts phase-04 --live"
+    "verify:p4:live": "tsx scripts/verify.ts phase-04 --live",
+    "verify:p5": "tsx scripts/verify.ts phase-05",
+    "verify:p5:live": "tsx scripts/verify.ts phase-05 --live"
   },
   "devDependencies": {
+    "@modelcontextprotocol/inspector": "^2.13.0",
     "@types/node": "^26.6.5",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2"
@@ -31,8 +34,12 @@
     "@ai-sdk/anthropic": "^4.0.78",
     "@ai-sdk/google": "^4.0.93",
     "@ai-sdk/groq": "^4.0.59",
+    "@ai-sdk/mcp": "^2.0.88",
     "@ai-sdk/openai": "^4.0.91",
     "@huggingface/transformers": "^4.3.1",
+    "@modelcontextprotocol/client": "^2.4.0",
+    "@modelcontextprotocol/node": "^2.1.2",
+    "@modelcontextprotocol/server": "^2.4.0",
     "@openrouter/ai-sdk-provider": "^3.1.0",
     "ai": "^7.0.137",
     "dotenv": "^18.0.7",

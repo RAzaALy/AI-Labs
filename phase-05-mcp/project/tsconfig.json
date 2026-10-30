@@ -1,0 +1,15 @@
+{
+  // The project imports Phase 3/4 project libraries, which use bundler-style (extensionless) imports.
+  "compilerOptions": {
+    "target": "ES2023",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "types": ["node"]
+  },
+  "include": ["check.ts", "reference/src/**/*.ts", "starter/src/**/*.ts"]
+}

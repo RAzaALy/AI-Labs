@@ -69,7 +69,19 @@ Tick items as you finish them (`[x]`). A phase is done when its checkpoint in [R
 - [ ] Senior checklist in the phase README: every box ticked
 
 ## Phase 5: MCP (~11 h)
-_Unlocks when the phase is published._
+- [ ] Read first: MCP architecture overview · 2026-07-28 key changes · Multi round-trip requests · Willison on MCP prompt injection · Security best practices
+- [ ] Theory: 01 what MCP is · 02 protocol & transports · 03 building servers · 04 auth & remote servers · 05 input required & security
+- [ ] Visualizations: MCP on the wire (both eras) · input-required round trips · servers & the trifecta
+- [ ] Lab 01 first server: green · poked it with the Inspector web UI
+- [ ] Lab 02 client & agent: green · live run through two servers; context cost of each server noted
+- [ ] Lab 03 HTTP & auth: green · can explain 401 → metadata → token → scopes
+- [ ] Lab 04 input required: green · every round-2 attack explained
+- [ ] Lab 05 security: green · live poisoned-server run observed and explained
+- [ ] Project Acme MCP: AC1–AC11 pass on `starter` (mock) **and** `LIVE=1`
+- [ ] Connected the project to Claude Code (`claude mcp add`), asked about the api, ran the `incidentReview` prompt; audit shows the host
+- [ ] Project self-review rubric ≥ 2 in every row
+- [ ] Quiz ≥ 8/10 · interview questions practised
+- [ ] Senior checklist in the phase README: every box ticked
 
 ## Phase 6: Local models (~11 h)
 _Unlocks when the phase is published._
